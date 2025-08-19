@@ -11,12 +11,15 @@ export default function ThemeControls({ user }){
   React.useEffect(()=>{
     document.documentElement.classList.toggle('dark', mode==='dark')
     localStorage.setItem(`${key}_mode`, mode)
-  },[mode, key])
+    applyTheme(theme, mode)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[mode])
 
   React.useEffect(()=>{
-    applyTheme(theme)
     localStorage.setItem(`${key}_theme`, theme)
-  },[theme, key])
+    applyTheme(theme, mode)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[theme])
 
   return (
     <div className="flex" style={{gap:8, alignItems:'center'}}>
