@@ -401,3 +401,9 @@ body{ font-size: 14px; }
 
 /* Make sure content doesn’t scroll vertically by default */
 .content{ overflow:hidden; }
+/* Halve widget height */
+.widgetBody{ padding: 22px 8px 8px !important; }
+.widgetWrap{ min-height: 110px !important; }
+.widgetsGrid{ gap: 6px !important; }
+.widget-size-s{ grid-column: span 3 !important; } /* 4 small per row */
+.widget-size-l{ grid-column: span 6 !important; } /* 2 large per row */
