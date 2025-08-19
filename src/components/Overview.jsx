@@ -1,4 +1,4 @@
-// src/components/Overview.jsx  (FULL REPLACEMENT)
+// src/components/Overview.jsx
 import React from 'react'
 import Sortable from 'sortablejs'
 
@@ -13,7 +13,7 @@ import Lunch from './Lunch'
 import TeacherPanel from './TeacherPanel'
 import AdminPanel from './AdminPanel'
 
-/* Optional sticky note widgets (admin adds via your existing flows) */
+/* Optional sticky note widgets */
 function StickyShell({ color='yellow', children }){
   return (
     <div className={`stickyNote sticky-${color}`}>
@@ -65,15 +65,33 @@ export default function Overview({ user }){
 
   const [widgets,setWidgets] = React.useState(()=>{ 
     const saved = JSON.parse(localStorage.getItem(storageKey)||'[]')
-    if (saved.length) return saved
-    // Seed EXACTLY 6 small widgets (3x2)
-    const seed = (user.role==='student'
-      ? ['calendar','assignments','wallet','bulletin','library','lunch']
+    if (saved.length) {
+      // migrate old sizes: 's'->'small', 'l'->'long'
+      return saved.map(w=>{
+        if (w.size==='s') return {...w, size:'small'}
+        if (w.size==='l') return {...w, size:'long'}
+        return w
+      })
+    }
+    // Seed 3 rows × 3 cols area:
+    // row1: small small long
+    // row2: small small long
+    // row3: small small long
+    const seedKeys = (user.role==='student'
+      ? ['calendar','assignments','wallet','bulletin','library','lunch','appointments','map','quotenote']
       : user.role==='teacher'
-        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library']
-        : ['adminpanel','calendar','bulletin','lunch','assignments','library'])
-    return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'compact'}))
+        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library','map','appointments','gifnote']
+        : ['adminpanel','calendar','bulletin','lunch','assignments','library','map','appointments','quotenote']
+    )
+    const seed = seedKeys.slice(0,9).map((k,i)=>({
+      id:String(i+1), k,
+      size: (i%3===2 ? 'long' : 'small'), // every 3rd is long; others small
+      style:'glass',
+      density:'compact'
+    }))
+    return seed
   })
+
   const [adding,setAdding]   = React.useState(false)
   const [showGrid,setShowGrid] = React.useState(false)
   const gridRef  = React.useRef(null)
@@ -82,7 +100,7 @@ export default function Overview({ user }){
   const save = (arr)=> localStorage.setItem(storageKey, JSON.stringify(arr))
   const add  = (k, extra={})=>{
     const id=String(Date.now())
-    const base={id,k,size:'s',style:'glass',density:'compact',...extra}
+    const base={id,k,size:'small',style:'glass',density:'compact',...extra}
     const arr=[...widgets, base]; setWidgets(arr); save(arr); setAdding(false)
   }
   const remove = (id)=>{ const arr=widgets.filter(w=>w.id!==id); setWidgets(arr); save(arr) }
@@ -102,8 +120,8 @@ export default function Overview({ user }){
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
       animation: 120,
-      draggable: '.widgetWrap',
-      handle: '.dragHandle6',     // 6-dot only
+      draggable: '.widget',
+      handle: '.dragHandle6',
       setData(){},
       ghostClass: 'drag-ghost',
       fallbackClass: 'drag-fallback',
@@ -152,34 +170,39 @@ export default function Overview({ user }){
         </div>
       </div>
 
-      {showGrid && <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'34px 0 0 0'}}/>}
+      {showGrid && <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'0 0 0 0'}}/>}
 
       <div className="widgetsGrid" ref={gridRef}>
         {widgets.map((w)=>{
           const def = REG[w.k]; if(!def) return null
           return (
-            <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-id={w.id}>
-              <div className="widgetToolbar glass">
-                <button className="dragHandle6" aria-label="Drag widget" title="Drag">⠿</button>
-                <span className="small">{def.label}</span>
-                <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
-                  <option value="s">S</option>
-                  <option value="l">L</option>
-                </select>
-                <select className="input xs" value={w.style} onChange={e=>setStyle(w.id, e.target.value)}>
-                  <option value="glass">Glass</option>
-                  <option value="solid">Solid</option>
-                  <option value="outline">Outline</option>
-                </select>
-                <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
-                  <option value="compact">Compact</option>
-                  <option value="comfortable">Comfortable</option>
-                </select>
-                <ConfigBtn w={w}/>
-                <button className="btn btn-ghost xs" title="Remove" onClick={()=>remove(w.id)}>✕</button>
-              </div>
-              <div className="widgetBody">
-                {def.render({ ...user }, w)}
+            <div key={w.id} className={`widget size-${w.size}`} data-id={w.id}>
+              <div className="widgetInner glass">
+                <div className="widgetToolbar">
+                  <button className="dragHandle6" aria-label="Drag widget" title="Drag">⠿</button>
+                  <span className="small">{def.label}</span>
+                  <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
+                    <option value="small">Small</option>
+                    <option value="tall">Tall</option>
+                    <option value="long">Long</option>
+                    <option value="xl">XL</option>
+                  </select>
+                  <select className="input xs" value={w.style} onChange={e=>setStyle(w.id, e.target.value)}>
+                    <option value="glass">Glass</option>
+                    <option value="solid">Solid</option>
+                    <option value="outline">Outline</option>
+                  </select>
+                  <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
+                    <option value="compact">Compact</option>
+                    <option value="comfortable">Comfortable</option>
+                  </select>
+                  <ConfigBtn w={w}/>
+                  <button className="btn btn-ghost xs" title="Remove" onClick={()=>remove(w.id)}>✕</button>
+                </div>
+
+                <div className="widgetBody">
+                  {def.render({ ...user }, w)}
+                </div>
               </div>
             </div>
           )
@@ -212,7 +235,6 @@ export default function Overview({ user }){
               </>
             )}
 
-            {/* Personalisation entries are added elsewhere by admin; keep placeholders if you wish */}
             <h4 style={{margin:'14px 0 6px'}}>Personalisation</h4>
             <div className="widgetPicker">
               <button className="glass card pickBtn" onClick={()=>add('quotenote',{ text:'“Small steps every day.”', author:'Unknown' })}>
