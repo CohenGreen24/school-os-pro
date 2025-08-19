@@ -1,18 +1,10 @@
 import React from 'react'
 import Sortable from 'sortablejs'
 
-/**
- * Sidebar
- * Props:
- *  - user: { id, role, name }
- *  - active: current page key (e.g. 'overview', 'adminpanel', ...)
- *  - onNavigate: (key) => void
- */
 export default function Sidebar({ user, active, onNavigate }) {
   const isTeacher = user?.role === 'teacher'
   const isAdmin   = user?.role === 'admin'
 
-  // Base menu (everyone)
   const BASE = [
     { key:'overview',    label:'🏠 Overview' },
     { key:'calendar',    label:'📅 Calendar' },
@@ -24,32 +16,24 @@ export default function Sidebar({ user, active, onNavigate }) {
     { key:'map',         label:'🗺️ Map' },
     { key:'profile',     label:'👤 Profile' },
   ]
-
-  // Extra for teacher/admin
   const EXTRA = [
     ...(isTeacher ? [{ key:'teacherpanel', label:'👩‍🏫 Homegroup' }] : []),
     ...(isAdmin   ? [{ key:'adminpanel',   label:'🛠️ Admin'     }] : []),
   ]
-
-  // Final list before user custom ordering
   const DEFAULT_ITEMS = [...BASE, ...EXTRA]
 
-  // Load/save order per user
   const storageKey = `sidebar_${user?.id || 'anon'}`
   const [items, setItems] = React.useState(() => {
     const saved = localStorage.getItem(storageKey)
     if (saved) {
-      // Filter out items that no longer apply (e.g., role changed)
       const parsed = JSON.parse(saved)
       const allowed = new Set(DEFAULT_ITEMS.map(i => i.key))
-      return parsed.filter(i => allowed.has(i.key)).concat(
-        DEFAULT_ITEMS.filter(i => !parsed.find(p => p.key === i.key))
-      )
+      return parsed.filter(i => allowed.has(i.key))
+                   .concat(DEFAULT_ITEMS.filter(i => !parsed.find(p => p.key === i.key)))
     }
     return DEFAULT_ITEMS
   })
 
-  // Keep in sync with role changes (e.g., teacher → admin)
   React.useEffect(() => {
     const allowed = new Set(DEFAULT_ITEMS.map(i => i.key))
     const merged = items.filter(i => allowed.has(i.key))
@@ -59,7 +43,6 @@ export default function Sidebar({ user, active, onNavigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role])
 
-  // SortableJS for drag-reorder
   const listRef = React.useRef(null)
   React.useEffect(() => {
     if (!listRef.current) return
@@ -68,6 +51,7 @@ export default function Sidebar({ user, active, onNavigate }) {
       handle: '.dragHandle',
       draggable: '.navItem',
       ghostClass: 'drag-ghost',
+      setData: function(){}, // iOS selection guard
       onEnd: (evt) => {
         if (evt.oldIndex === evt.newIndex) return
         const arr = [...items]
@@ -79,7 +63,7 @@ export default function Sidebar({ user, active, onNavigate }) {
     })
     return () => sortable.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, listRef])
+  }, [items])
 
   return (
     <aside className="sidebarNav glass">

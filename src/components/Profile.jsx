@@ -11,7 +11,6 @@ async function getSignedUpload(studentId, uploaderId, filename){
   const row = Array.isArray(data) ? data[0] : data
   return row // { upload_url, object_path, public_url }
 }
-
 async function putSigned(url, file){
   const res = await fetch(url, {
     method: 'PUT',
@@ -27,10 +26,10 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
   const [saving,setSaving] = React.useState(false)
   const isTeacher = user.role==='teacher'
   const isAdmin   = user.role==='admin'
+  const canEditTarget = isAdmin || isTeacher || target?.id === user.id
 
   React.useEffect(()=>{ setTarget(user) },[user])
 
-  // Load students for teacher/admin lists
   React.useEffect(()=>{ (async()=>{
     if(isTeacher || isAdmin){
       const { data } = await supabase
@@ -61,22 +60,16 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
       }
       await supabase.from('users').update(payload).eq('id', target.id)
       alert('Saved')
-    }catch(e){
-      alert('Save failed: ' + (e.message || e))
-    }finally{
-      setSaving(false)
-    }
+    }catch(e){ alert('Save failed: ' + (e.message || e)) }
+    finally{ setSaving(false) }
   }
 
   const handleAvatarPick = async (file) => {
     if(!file || !target) return
     try{
-      // Request signed upload URL from backend (enforces teacher-student mapping)
       const signed = await getSignedUpload(target.id, user.id, file.name)
       await putSigned(signed.upload_url, file)
-      // Save avatar_url to user row
       await supabase.from('users').update({ avatar_url: signed.public_url }).eq('id', target.id)
-      // Refresh
       const { data } = await supabase.from('users').select('*').eq('id', target.id).single()
       if (data) setTarget(prev=>({ ...prev, ...data }))
       alert('Avatar updated')
@@ -84,9 +77,6 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
       alert('Upload failed: ' + (e.message || e))
     }
   }
-
-  // Only allow changing other students if teacher/admin; students can always change their own
-  const canEditTarget = (isTeacher || isAdmin || target?.id === user.id)
 
   return (
     <div className={cardClass}>
@@ -141,27 +131,27 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
           <div className="row narrow" style={{gridTemplateColumns:'1fr 1fr'}}>
             <div>
               <label className="small">Full name</label>
-              <input className="input" value={target?.name||''} onChange={e=>setTarget(t=>({...t, name:e.target.value}))} />
+              <input className="input" value={target?.name||''} onChange={e=>setTarget(t=>({...t, name:e.target.value}))}/>
             </div>
             <div>
               <label className="small">Email</label>
-              <input className="input" value={target?.email||''} onChange={e=>setTarget(t=>({...t, email:e.target.value}))} />
+              <input className="input" value={target?.email||''} onChange={e=>setTarget(t=>({...t, email:e.target.value}))}/>
             </div>
             <div>
               <label className="small">Year level</label>
-              <input className="input" type="number" min="1" max="13" value={target?.year_level||''} onChange={e=>setTarget(t=>({...t, year_level:e.target.value}))} />
+              <input className="input" type="number" min="1" max="13" value={target?.year_level||''} onChange={e=>setTarget(t=>({...t, year_level:e.target.value}))}/>
             </div>
             <div>
               <label className="small">Care group</label>
-              <input className="input" value={target?.care_group||''} onChange={e=>setTarget(t=>({...t, care_group:e.target.value}))} />
+              <input className="input" value={target?.care_group||''} onChange={e=>setTarget(t=>({...t, care_group:e.target.value}))}/>
             </div>
             <div>
               <label className="small">Emergency name</label>
-              <input className="input" value={target?.emergency_contact_name||''} onChange={e=>setTarget(t=>({...t, emergency_contact_name:e.target.value}))} />
+              <input className="input" value={target?.emergency_contact_name||''} onChange={e=>setTarget(t=>({...t, emergency_contact_name:e.target.value}))}/>
             </div>
             <div>
               <label className="small">Emergency phone</label>
-              <input className="input" value={target?.emergency_contact_phone||''} onChange={e=>setTarget(t=>({...t, emergency_contact_phone:e.target.value}))} />
+              <input className="input" value={target?.emergency_contact_phone||''} onChange={e=>setTarget(t=>({...t, emergency_contact_phone:e.target.value}))}/>
             </div>
             <div>
               <label className="small">Role</label>

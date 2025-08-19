@@ -6,9 +6,11 @@ export const THEMES = {
   slate:    { name:'Slate',    bg:'#64748b', radius:'14px', blur:'10px' },
 }
 
-export function applyTheme(themeKey='classic', accent='#0ea5e9'){
+export function applyTheme(themeKey='classic', accent){
   const t = THEMES[themeKey] || THEMES.classic
-  document.documentElement.style.setProperty('--accent', accent || t.bg)
-  document.documentElement.style.setProperty('--radius', t.radius)
-  document.documentElement.style.setProperty('--glass-blur', t.blur)
+  const acc = accent || t.bg
+  const root = document.documentElement
+  root.style.setProperty('--accent', acc)
+  root.style.setProperty('--radius', t.radius)
+  root.style.setProperty('--glass-blur', t.blur)
 }

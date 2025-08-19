@@ -1,5 +1,7 @@
 import React from 'react'
 import Sortable from 'sortablejs'
+
+// Keep your existing feature components:
 import Calendar from './Calendar'
 import Assignments from './Assignments'
 import Wallet from './Wallet'
@@ -12,16 +14,16 @@ import TeacherPanel from './TeacherPanel'
 import AdminPanel from './AdminPanel'
 
 const REGISTRY = {
-  calendar:    { label:'Calendar',    render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
-  assignments: { label:'Assignments', render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
-  wallet:      { label:'Wallet',      render: (u,c)=> <Wallet user={u} styleVariant={c.style} density={c.density}/> },
-  library:     { label:'Library',     render: (u,c)=> <Library user={u} styleVariant={c.style}/> },
-  appointments:{ label:'Wellbeing',   render: (u,c)=> <Appointments user={u} styleVariant={c.style}/> },
-  bulletin:    { label:'Bulletin',    render: (u,c)=> <BulletinBoard user={u} styleVariant={c.style} density={c.density}/> },
-  map:         { label:'Map',         render: (u,c)=> <MapPanel styleVariant={c.style}/> },
-  lunch:       { label:'Lunch',       render: (u,c)=> <Lunch user={u} styleVariant={c.style} density={c.density}/> },
-  teacherpanel:{ label:'Teacher Panel', render:(u,c)=> <TeacherPanel user={u} styleVariant={c.style}/> },
-  adminpanel:  { label:'Admin Panel',   render:(u,c)=> <AdminPanel   user={u} styleVariant={c.style}/> },
+  calendar:     { label:'Calendar',     render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
+  assignments:  { label:'Assignments',  render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
+  wallet:       { label:'Wallet',       render: (u,c)=> <Wallet user={u} styleVariant={c.style} density={c.density}/> },
+  library:      { label:'Library',      render: (u,c)=> <Library user={u} styleVariant={c.style}/> },
+  appointments: { label:'Wellbeing',    render: (u,c)=> <Appointments user={u} styleVariant={c.style}/> },
+  bulletin:     { label:'Bulletin',     render: (u,c)=> <BulletinBoard user={u} styleVariant={c.style} density={c.density}/> },
+  map:          { label:'Map',          render: (u,c)=> <MapPanel styleVariant={c.style}/> },
+  lunch:        { label:'Lunch',        render: (u,c)=> <Lunch user={u} styleVariant={c.style} density={c.density}/> },
+  teacherpanel: { label:'Teacher Panel',render: (u,c)=> <TeacherPanel user={u} styleVariant={c.style}/> },
+  adminpanel:   { label:'Admin Panel',  render: (u,c)=> <AdminPanel   user={u} styleVariant={c.style}/> },
 }
 
 export default function Overview({ user }){
@@ -36,63 +38,53 @@ export default function Overview({ user }){
         : ['adminpanel','bulletin','calendar','lunch'])
     return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'comfortable'}))
   })
-  const [adding,setAdding] = React.useState(false)
+  const [adding,setAdding]   = React.useState(false)
   const [showGrid,setShowGrid] = React.useState(false)
-  const [draggingId,setDraggingId] = React.useState(null)
-  const gridRef = React.useRef(null)
-  const areaRef = React.useRef(null)
+  const gridRef  = React.useRef(null)
+  const areaRef  = React.useRef(null)
 
   const save = (arr)=> localStorage.setItem(storageKey, JSON.stringify(arr))
-  const add = (k)=>{ const id=String(Date.now()); const arr=[...widgets, {id,k,size:'s',style:'glass',density:'comfortable'}]; setWidgets(arr); save(arr); setAdding(false) }
+  const add  = (k)=>{ const id=String(Date.now()); const arr=[...widgets,{id,k,size:'s',style:'glass',density:'comfortable'}]; setWidgets(arr); save(arr); setAdding(false) }
   const remove = (id)=>{ const arr=widgets.filter(w=>w.id!==id); setWidgets(arr); save(arr) }
   const setSize = (id,size)=>{ const arr=widgets.map(w=>w.id===id?{...w,size}:w); setWidgets(arr); save(arr) }
   const setStyle = (id,style)=>{ const arr=widgets.map(w=>w.id===id?{...w,style}:w); setWidgets(arr); save(arr) }
   const setDensity = (id,density)=>{ const arr=widgets.map(w=>w.id===id?{...w,density}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
 
-  // Outside click to hide grid overlay (when not dragging)
+  // Hide grid overlay when clicking outside
   React.useEffect(()=>{
-    const onDocClick = (e)=>{
-      if (!areaRef.current) return
-      if (!areaRef.current.contains(e.target)) setShowGrid(false)
-    }
-    document.addEventListener('pointerdown', onDocClick)
-    return ()=> document.removeEventListener('pointerdown', onDocClick)
+    const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
+    document.addEventListener('pointerdown', onDocDown)
+    return ()=> document.removeEventListener('pointerdown', onDocDown)
   },[])
 
-  // SortableJS setup: long-press to start (delay), grid overlay & pulse class
+  // SortableJS init — long-press drag (iPad safe)
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
       animation: 160,
-      handle: '.widgetToolbar',           // drag via toolbar
       draggable: '.widgetWrap',
-      delay: 180,                         // long-press to start
+      handle: '.widgetToolbar',            // you can also drag by toolbar
+      delay: 150,                          // long-press to start on touch
       delayOnTouchOnly: true,
-      forceFallback: true,                // better visuals on iPad
-      fallbackClass: 'drag-fallback',
+      forceFallback: true,
+      fallbackOnBody: true,
+      fallbackTolerance: 3,
+      setData: function () {},             // prevent iOS ghost text selection
       ghostClass: 'drag-ghost',
-      onChoose: (evt)=>{
-        setShowGrid(true)
-        const id = evt.item?.dataset?.id
-        setDraggingId(id || null)
-        if (id) evt.item.classList.add('draggingPulse')
-      },
-      onStart: (evt)=>{
-        setShowGrid(true)
-      },
-      onEnd: (evt)=>{
+      fallbackClass: 'drag-fallback',
+      filter: 'input,select,textarea,button,a,.no-drag,.widgetBody', // don’t start drag from these
+      preventOnFilter: true,
+      onChoose: (evt)=>{ setShowGrid(true); evt.item.classList.add('draggingPulse') },
+      onStart:  ()=>{ setShowGrid(true) },
+      onEnd:    (evt)=>{
         setShowGrid(false)
-        const id = evt.item?.dataset?.id
-        setDraggingId(null)
-        if (id) evt.item.classList.remove('draggingPulse')
-
-        const from = evt.oldIndex
-        const to   = evt.newIndex
+        evt.item.classList.remove('draggingPulse')
+        const from = evt.oldIndex, to = evt.newIndex
         if(from === to) return
-        const arr=[...widgets]
-        const [m] = arr.splice(from,1)
-        arr.splice(to,0,m)              // “swap/reorder” behavior
+        const arr = [...widgets]
+        const [m] = arr.splice(from, 1)
+        arr.splice(to, 0, m)               // reorder/swap logic (valid in 12-col grid)
         setWidgets(arr); save(arr)
       }
     })
@@ -110,30 +102,22 @@ export default function Overview({ user }){
         </div>
       </div>
 
-      {/* Grid overlay shown during long-press/drag */}
       {showGrid && (
         <div className="gridOverlay" aria-hidden="true">
           <div className="gridOverlayInner">
-            {Array.from({length:12}).map((_,i)=>(
-              <div key={i} className="gridCol"></div>
-            ))}
+            {Array.from({length:12}).map((_,i)=><div key={i} className="gridCol" />)}
           </div>
         </div>
       )}
 
       <div className="widgetsGrid" ref={gridRef}>
-        {widgets.map((w,idx)=>{
+        {widgets.map((w)=>{
           const def = REGISTRY[w.k]; if(!def) return null
           return (
-            <div
-              key={w.id}
-              data-id={w.id}
-              className={`widgetWrap widget-size-${w.size}`}
-              style={{ position:'relative' }}
-            >
+            <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-id={w.id}>
               <div className="widgetToolbar glass">
                 <span className="small">{def.label}</span>
-                {/* Only Small (s) and Large (l) */}
+                {/* S + L only */}
                 <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
                   <option value="s">S</option>
                   <option value="l">L</option>
