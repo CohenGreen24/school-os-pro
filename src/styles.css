@@ -327,3 +327,77 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 .draggingPulseSoft{ animation: pulseZ 1300ms ease-in-out infinite; }
 /* Optional: ultra-compact widget body */
 .widgetBody{ padding: 30px 8px 8px; }
+/* Sidebar wide enough for 1 icon + label */
+:root{ --sidebar-w: 190px; }
+
+/* Sidebar: exactly two cells: icon | label */
+.sidebarNav .nav .navItem{
+  display:grid;
+  grid-template-columns: 28px 1fr; /* icon | label */
+  align-items:center; gap:8px;
+}
+
+/* Compact overall type & paddings for “one screen” */
+body{ font-size: 14px; }
+.topbar{ padding: 6px 10px; }
+.card{ padding:8px; }
+.btn{ min-height: 38px; padding: 5px 9px; }
+.input{ min-height: 36px; padding: 5px 8px; }
+
+/* Widgets grid: 12 cols; small=3 (4 per row), large=6 (2 per row) */
+.widgetsGrid{
+  display:grid; gap:8px;
+  grid-template-columns: repeat(12, minmax(0,1fr));
+}
+.widget-size-s{ grid-column: span 3; }
+.widget-size-l{ grid-column: span 6; }
+
+/* Lower card height so 2 rows fit comfortably */
+.widgetBody{ padding: 30px 8px 8px; }
+
+/* Optional: hard height caps for uniform rows (tweak as needed) */
+.widgetWrap{ min-height: 150px; }
+.widget-size-s .widgetWrap, .widget-size-s{ min-height: 150px; }
+.widget-size-l{ min-height: 160px; }
+
+/* 6-dot drag handle only starts drag */
+.dragHandle6{
+  appearance:none; border:1px dashed var(--panel-border);
+  background: transparent; color: var(--muted);
+  border-radius: 8px; padding: 2px 6px; cursor:grab; font-weight:700;
+}
+.dragHandle6:active{ cursor:grabbing; }
+
+/* Fine grid overlay inside widgets area only */
+.fineGrid{
+  position:absolute; inset:0; border-radius: 12px;
+  background-image:
+    linear-gradient(to right, rgba(0,0,0,.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,.06) 1px, transparent 1px);
+  background-size: 12px 12px, 12px 12px;
+  pointer-events:none;
+}
+
+/* Ultra-light pulse on chosen widget only */
+@keyframes pulseZ {
+  0%   { transform: perspective(800px) translateZ(0) scale(1); }
+  50%  { transform: perspective(800px) translateZ(8px) scale(1.002); }
+  100% { transform: perspective(800px) translateZ(0) scale(1); }
+}
+.draggingPulseSoft{ animation: pulseZ 1300ms ease-in-out infinite; }
+
+/* Sticky note visuals */
+.stickyNote{ position:relative; }
+.stickyPin{ position:absolute; top:-6px; left:10px; transform: rotate(-12deg); filter: drop-shadow(0 2px 2px rgba(0,0,0,.2)); }
+.stickyPaper{
+  padding:8px; border-radius: 10px;
+  box-shadow: 0 6px 12px rgba(0,0,0,.08);
+  transform: rotate(-1deg);
+}
+.sticky-yellow .stickyPaper{ background:#fff7ad; color:#3a2f00; }
+.sticky-mint   .stickyPaper{ background:#c9ffe0; color:#083a2a; }
+.noteTitle{ font-weight:700; margin-bottom:4px; }
+.noteText{ font-size:.98rem; line-height:1.25; }
+
+/* Make sure content doesn’t scroll vertically by default */
+.content{ overflow:hidden; }

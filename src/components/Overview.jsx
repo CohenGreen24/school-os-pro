@@ -18,9 +18,7 @@ function StickyShell({ color='yellow', children }){
   return (
     <div className={`stickyNote sticky-${color}`}>
       <div className="stickyPin" aria-hidden>📌</div>
-      <div className="stickyPaper">
-        {children}
-      </div>
+      <div className="stickyPaper">{children}</div>
     </div>
   )
 }
@@ -29,9 +27,9 @@ function QuoteNote({ config }){
   const author = config?.author || 'Unknown'
   return (
     <StickyShell color="yellow">
-      <div style={{fontWeight:700, marginBottom:6}}>Motivation</div>
-      <div style={{fontSize:'1.0rem', lineHeight:1.3}}>{text}</div>
-      <div className="small" style={{marginTop:6}}>— {author}</div>
+      <div className="noteTitle">Motivation</div>
+      <div className="noteText">{text}</div>
+      <div className="small" style={{marginTop:4}}>— {author}</div>
     </StickyShell>
   )
 }
@@ -40,8 +38,8 @@ function GifNote({ config }){
   const cap = config?.caption || 'You got this!'
   return (
     <StickyShell color="mint">
-      <div style={{fontWeight:700, marginBottom:6}}>Mood</div>
-      <img src={url} alt="gif" style={{width:'100%', borderRadius:10}} />
+      <div className="noteTitle">Mood</div>
+      <img src={url} alt="gif" style={{width:'100%', borderRadius:8}} />
       <div className="small" style={{marginTop:6, textAlign:'center'}}>{cap}</div>
     </StickyShell>
   )
@@ -65,14 +63,16 @@ const REGISTRY = {
 
 export default function Overview({ user }){
   const storageKey = `widgets_${user.id}`
+
   const [widgets,setWidgets] = React.useState(()=>{ 
     const saved = JSON.parse(localStorage.getItem(storageKey)||'[]')
     if (saved.length) return saved
+    // Seed 8 small widgets (no scrolling)
     const seed = (user.role==='student'
-      ? ['calendar','assignments','wallet','bulletin']
+      ? ['calendar','assignments','wallet','bulletin','library','lunch','appointments','map']
       : user.role==='teacher'
-        ? ['teacherpanel','bulletin','lunch','map']
-        : ['adminpanel','bulletin','calendar','lunch'])
+        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library','map','appointments']
+        : ['adminpanel','calendar','bulletin','lunch','assignments','library','map','appointments'])
     return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'compact'}))
   })
   const [adding,setAdding]   = React.useState(false)
@@ -93,17 +93,18 @@ export default function Overview({ user }){
   const setConfig = (id,patch)=>{ const arr=widgets.map(w=>w.id===id?{...w, ...patch}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
 
+  // Show grid only while dragging inside area
   React.useEffect(()=>{
     const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
     document.addEventListener('pointerdown', onDocDown)
     return ()=> document.removeEventListener('pointerdown', onDocDown)
   },[])
 
-  // Sortable with explicit handle (6-dot)
+  // Sortable: explicit 6-dot handle; neat auto-swap
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
-      animation: 140,
+      animation: 120,
       draggable: '.widgetWrap',
       handle: '.dragHandle6',
       setData(){},
@@ -122,6 +123,7 @@ export default function Overview({ user }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgets])
 
+  // inline editors for notes
   const ConfigBtn = ({w})=>{
     if (w.k==='quotenote'){
       return (
@@ -143,6 +145,7 @@ export default function Overview({ user }){
   }
 
   const isAdmin = user.role==='admin'
+  const existingNotes = widgets.filter(w=>w.k==='quotenote' || w.k==='gifnote')
 
   return (
     <div className="widgetsArea" ref={areaRef} style={{position:'relative'}}>
@@ -155,7 +158,7 @@ export default function Overview({ user }){
       </div>
 
       {showGrid && (
-        <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'38px 0 0 0'}}></div>
+        <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'34px 0 0 0'}}></div>
       )}
 
       <div className="widgetsGrid" ref={gridRef}>
@@ -164,7 +167,7 @@ export default function Overview({ user }){
           return (
             <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-id={w.id}>
               <div className="widgetToolbar glass">
-                <button className="dragHandle6" title="Drag">⠿</button>
+                <button className="dragHandle6" aria-label="Drag widget" title="Drag">⠿</button>
                 <span className="small">{def.label}</span>
                 <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
                   <option value="s">S</option>
@@ -221,12 +224,30 @@ export default function Overview({ user }){
                 <h4 style={{margin:'14px 0 6px'}}>Personalisation (Admin)</h4>
                 <div className="widgetPicker">
                   <button className="glass card pickBtn" onClick={()=>add('quotenote',{ text:'“Small steps every day.”', author:'Unknown' })}>
-                    Quote Note
+                    New Quote Note
                   </button>
                   <button className="glass card pickBtn" onClick={()=>add('gifnote',{ url:'', caption:'You got this!' })}>
-                    GIF Note
+                    New GIF Note
                   </button>
                 </div>
+
+                {existingNotes.length>0 && (
+                  <>
+                    <h4 style={{margin:'14px 0 6px'}}>Your Sticky Notes (click to duplicate)</h4>
+                    <div className="widgetPicker">
+                      {existingNotes.map((n)=>(
+                        <button
+                          key={`tpl-${n.id}`}
+                          className="glass card pickBtn"
+                          onClick={()=>add(n.k, {...n, id: undefined})}
+                          title="Duplicate this note"
+                        >
+                          {n.k==='quotenote' ? `“${(n.text||'…').slice(0,22)}”` : (n.caption || 'GIF Note')}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
