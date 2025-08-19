@@ -37,7 +37,6 @@ export default function Sidebar({ user, active, onNavigate }) {
     return parsed.filter(i=>allowed.has(i.key))
       .concat(DEFAULT_ITEMS.filter(i=>!parsed.find(p=>p.key===i.key)))
   })
-  const [expanded,setExpanded] = React.useState(false)
 
   React.useEffect(()=>{
     const allowed = new Set(DEFAULT_ITEMS.map(i=>i.key))
@@ -53,10 +52,11 @@ export default function Sidebar({ user, active, onNavigate }) {
     if(!listRef.current) return
     const sortable = Sortable.create(listRef.current, {
       animation: 150,
-      handle: '.dragHandle',
       draggable: '.navItem',
+      delay: 120,              // short-press to drag (prevents accidental taps)
+      delayOnTouchOnly: true,
+      setData(){},
       ghostClass: 'drag-ghost',
-      setData(){}, // iOS selection guard
       onEnd: (evt)=>{
         if (evt.oldIndex === evt.newIndex) return
         const arr = [...items]
@@ -71,17 +71,11 @@ export default function Sidebar({ user, active, onNavigate }) {
   }, [items])
 
   return (
-    <aside
-      className={`sidebarNav glass ${expanded?'sidebar--expanded':''}`}
-      style={{ position:'sticky', top:8, alignSelf:'start', height:'fit-content' }}
-    >
-      <div className="brand" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <div className="title">{expanded ? 'School OS' : '🏫'}</div>
-        <button className="btn xs" onClick={()=>setExpanded(v=>!v)} title="Expand/Collapse">
-          {expanded ? '‹' : '›'}
-        </button>
+    <aside className="sidebarNav glass">
+      <div className="brand">
+        <div className="title">School OS</div>
+        <div className="subtitle">{user?.name || 'Guest'}</div>
       </div>
-
       <div className="nav" ref={listRef}>
         {items.map(item=>(
           <button
@@ -90,9 +84,8 @@ export default function Sidebar({ user, active, onNavigate }) {
             onClick={()=>onNavigate(item.key)}
             title={item.label}
           >
-            <span className="dragHandle" title="Drag">⋮⋮</span>
-            <span aria-hidden="true" style={{fontSize:'1.1rem'}}>{ICONS[item.key] || '•'}</span>
-            <span className="label">{item.label}</span>
+            <span className="navIcon" aria-hidden="true">{ICONS[item.key] || '•'}</span>
+            <span className="navLabel">{item.label}</span>
           </button>
         ))}
       </div>

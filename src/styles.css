@@ -1,183 +1,167 @@
 /* =========================================================
-   School OS — Unified Styles (thin sidebar, compact widgets)
-   This file expects theme.js to set:
-   --bg-grad, --panel, --panel-border, --accent
+   School OS — Compact UI (wide widgets, thin grid, readable)
+   Expects theme.js -> applyTheme(theme, mode) to set:
+   --bg-grad, --panel, --panel-border, --accent, --widget-tint
    ========================================================= */
 
-/* ---------- Root / Theme variables ---------- */
+/* ---------- Root ---------- */
 :root{
   --bg-grad: linear-gradient(135deg,#eaf5ff,#d8ecff 45%,#c9e4ff);
   --panel: rgba(255,255,255,.55);
   --panel-border: rgba(0,0,0,.08);
   --accent:#0ea5e9;
+  --widget-tint:#eaf5ff; /* theme supplies this to keep widgets/buttons on-brand */
 
-  --text: #111827;
-  --muted:#6b7280;
+  --text: #0f172a;
+  --muted:#64748b;
 
   --radius:14px;
   --glass-blur:10px;
 
-  --pad: 10px;
   --touch: 44px;
-
-  /* Thin sidebar; just wide enough for icon + tiny label */
-  --sidebar-w: 120px;
-
-  /* Content max (iPad landscape comfortable) */
+  --sidebar-w: 180px;     /* wider: icon + label */
   --content-max: 1600px;
 }
-
 :root.dark{
   --text: #e5e7eb;
-  --muted:#9ca3af;
+  --muted:#94a3b8;
 }
 
-/* ---------- Resets ---------- */
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; }
-html { -webkit-text-size-adjust: 100%; }
+/* ---------- Base ---------- */
+*{ box-sizing: border-box; }
+html, body, #root{ height:100%; }
+html{ -webkit-text-size-adjust: 100%; }
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
   color: var(--text);
   background: var(--bg-grad);
 }
-a{ color: var(--accent); text-decoration: none; }
+a{ color: var(--accent); text-decoration:none; }
 img{ max-width:100%; display:block; }
-small, .small{ color: var(--muted); font-size: .86rem; }
+small,.small{ color: var(--muted); font-size:.86rem; }
 
-/* ---------- Containers / Layout ---------- */
+/* ---------- Layout ---------- */
 .container{
   max-width: var(--content-max);
-  margin: 0 auto;
+  margin:0 auto;
   padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px);
 }
-
 .topbar{
   display:flex; align-items:center; justify-content:space-between;
   padding: 8px 12px; border-radius: var(--radius);
 }
-
 .layout{
   display:grid;
   grid-template-columns: var(--sidebar-w) minmax(0,1fr);
   gap: 12px;
 }
 
-/* ---------- Glass surfaces ---------- */
+/* ---------- Glass ---------- */
 .glass{
   backdrop-filter: blur(var(--glass-blur));
   background: var(--panel);
-  border: 1px solid var(--panel-border);
+  border:1px solid var(--panel-border);
   border-radius: var(--radius);
   color: var(--text);
 }
-
 .card{ padding: 10px; border-radius: var(--radius); }
 
+/* ---------- Controls ---------- */
 .btn{
   appearance:none; cursor:pointer;
   border:1px solid var(--panel-border);
-  background: rgba(255,255,255,.6);
+  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
   color: var(--text);
   min-height: var(--touch);
   padding: 6px 10px; border-radius: 12px;
 }
-:root.dark .btn{ background: rgba(20,20,25,.55); }
-.btn:hover{ filter: brightness(1.02); }
+:root.dark .btn{
+  background: color-mix(in srgb, var(--widget-tint) 28%, black 72%);
+}
+.btn:hover{ filter: brightness(1.03); }
 .btn:active{ transform: translateY(1px); }
 .btn.xs{ min-height: 30px; padding: 4px 8px; border-radius: 10px; }
+
 .btn.btn-primary{
   background: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 60%, black 0%);
-  color: #fff;
+  color:#fff;
 }
 .btn.btn-ghost{ background: transparent; border-color: transparent; }
 
 .input{
-  width:100%;
-  min-height: var(--touch);
-  padding: 6px 9px;
-  border-radius: 12px;
+  width:100%; min-height: var(--touch);
+  padding: 6px 9px; border-radius: 12px;
   border:1px solid var(--panel-border);
-  background: rgba(255,255,255,.65);
+  background: color-mix(in srgb, var(--widget-tint) 65%, white 35%);
   color: var(--text);
 }
-:root.dark .input{ background: rgba(20,20,25,.55); color: var(--text); }
+:root.dark .input{
+  background: color-mix(in srgb, var(--widget-tint) 26%, black 74%);
+  color: var(--text);
+}
 .input.xs{ min-height: 30px; padding: 4px 8px; }
 label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 
-/* ---------- Utility ---------- */
-.flex{ display:flex; gap: 8px; }
-.row{ display:grid; gap: 10px; }
-.row.narrow{ gap: 8px; }
-.center{ display:flex; align-items:center; justify-content:center; }
-
-/* ---------- Sidebar (thin, icons + small labels) ---------- */
+/* ---------- Sidebar (wider; 1 icon + text) ---------- */
 .sidebarNav{
-  position: sticky; top:8px; align-self: start; height: fit-content;
-  width: var(--sidebar-w);
-  overflow: clip;
-  padding: 8px;
-  display:flex; flex-direction:column; gap:8px;
+  position: sticky; top:8px; align-self:start; height:fit-content;
+  width: var(--sidebar-w); overflow: clip;
+  padding: 8px; display:flex; flex-direction:column; gap:8px;
 }
 .sidebarNav .brand{
   padding: 8px; border-radius: 12px;
   display:flex; align-items:center; justify-content:space-between;
 }
-.sidebarNav .brand .title{ font-weight:700; font-size: .95rem; }
-.sidebarNav .brand .subtitle{ opacity:.75; font-size:.78rem; }
+.sidebarNav .brand .title{ font-weight:700; font-size:.98rem; }
+.sidebarNav .brand .subtitle{ opacity:.78; font-size:.78rem; }
 
 .sidebarNav .nav{ display:flex; flex-direction:column; gap:6px; }
 .sidebarNav .nav .navItem{
   display:grid;
-  grid-template-columns: 16px 22px 1fr; /* handle | icon | label */
-  align-items:center;
-  gap:6px;
-  padding: 8px;
-  min-height: 38px;
-  border-radius: 12px;
-  text-align:left;
-  cursor: pointer;
-  user-select: none;
+  grid-template-columns: 26px 1fr; /* icon | label */
+  align-items:center; gap:8px;
+  padding: 9px; min-height: 40px;
+  border-radius: 12px; text-align:left; user-select:none;
+  cursor:pointer;
   border:1px solid var(--panel-border);
-  background: rgba(255,255,255,.5);
+  background: color-mix(in srgb, var(--widget-tint) 58%, white 42%);
   backdrop-filter: blur(8px);
   color: var(--text);
 }
 :root.dark .sidebarNav .nav .navItem{
-  background: rgba(20,20,25,.5);
+  background: color-mix(in srgb, var(--widget-tint) 24%, black 76%);
   border-color: rgba(255,255,255,.12);
 }
 .sidebarNav .nav .navItem.active{
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent) inset;
 }
-.dragHandle{ font-weight:700; opacity:.35; cursor:grab; user-select:none; }
-.sidebarNav .nav .navItem:active .dragHandle{ cursor:grabbing; }
-.sidebarNav .nav .navItem .label{
-  font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.navIcon{ font-size: 1.15rem; line-height:1; }
+.navLabel{ font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-/* Prevent text selection while dragging sidebar */
-.sidebarNav, .sidebarNav .nav .navItem, .dragHandle{
-  -webkit-user-select:none; user-select:none; touch-action: manipulation;
-}
-
-.sidebarFooter{ margin-top:auto; padding:4px 6px; opacity:.75; }
-
-/* ---------- Widgets Area (compact) ---------- */
+/* ---------- Widgets (compact; 1-screen feel) ---------- */
 .widgetsArea{ position:relative; overflow:hidden; }
 .widgetsGrid{
-  display:grid; gap:8px;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  display:grid; gap:10px;
+  grid-template-columns: repeat(12, minmax(0,1fr));
+}
+.widgetWrap{
+  border-radius: var(--radius); overflow:hidden; position:relative;
+  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
+  border:1px solid var(--panel-border);
+}
+:root.dark .widgetWrap{
+  background: color-mix(in srgb, var(--widget-tint) 26%, black 74%);
+  border-color: rgba(255,255,255,.12);
 }
 
-/* Widget sizes: S = half page, L = full width */
-.widgetWrap{ border-radius: var(--radius); overflow:hidden; position:relative; }
+/* Sizes: S = half, L = full */
 .widget-size-s{ grid-column: span 6; }
 .widget-size-l{ grid-column: span 12; }
 
+/* Slim toolbar */
 .widgetToolbar{
   position:absolute; top:6px; right:6px; z-index:20;
   display:flex; gap:6px; align-items:center; padding:3px 6px;
@@ -187,73 +171,60 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 }
 :root.dark .widgetToolbar{ background: rgba(20,20,25,.55); border-color: rgba(255,255,255,.12); }
 
-/* Compact body so overview feels one-screen */
+/* Compact body */
 .widgetBody{ padding: 38px 10px 10px; }
 
-/* Fine grid overlay (appears during drag) */
+/* Fine grid overlay (only inside widgets area while dragging) */
 .fineGrid{
-  position:absolute; inset:0;
+  position:absolute; inset:0; border-radius: var(--radius);
   background-image:
     linear-gradient(to right, rgba(0,0,0,.07) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(0,0,0,.07) 1px, transparent 1px);
   background-size: 14px 14px, 14px 14px;
-  border-radius: var(--radius);
-  pointer-events: none;
+  pointer-events:none;
 }
 
 /* Sortable visuals */
-.drag-ghost{ opacity:.6; }
-.drag-fallback{ opacity:.95; transform: scale(1.01); }
+.drag-ghost{ opacity:.66; }
+.drag-fallback{ opacity:.97; transform: scale(1.01); }
 
-/* Ultra-light drag pulse (comes closer ↔ back) */
+/* Ultra-light drag pulse (only the chosen item) */
 @keyframes pulseZ {
   0%   { transform: perspective(800px) translateZ(0) scale(1); }
-  50%  { transform: perspective(800px) translateZ(12px) scale(1.004); }
+  50%  { transform: perspective(800px) translateZ(10px) scale(1.003); }
   100% { transform: perspective(800px) translateZ(0) scale(1); }
 }
-.draggingPulseSoft{ animation: pulseZ 1200ms ease-in-out infinite; }
-
-/* ---------- Modal (widget picker) ---------- */
-.modal{
-  position:fixed; inset:0; z-index:50;
-  display:flex; align-items:center; justify-content:center;
-  background: rgba(0,0,0,.25);
-}
-.modalBody{
-  width:min(900px, 92vw);
-  max-height: 80vh; overflow:auto; -webkit-overflow-scrolling: touch;
-  padding:10px; border-radius: var(--radius);
-}
-.widgetPicker{
-  display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:10px; margin-top:10px;
-}
-.pickBtn{ padding:10px; cursor:pointer; }
+.draggingPulseSoft{ animation: pulseZ 1300ms ease-in-out infinite; }
 
 /* ---------- Lists inside widgets ---------- */
 .list{ display:flex; flex-direction:column; gap:8px; }
 .list .item{
   padding:8px; border-radius:12px; border:1px solid var(--panel-border);
-  background: rgba(255,255,255,.55); color: var(--text);
+  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
+  color: var(--text);
 }
-:root.dark .list .item{ background: rgba(20,20,25,.55); border-color: rgba(255,255,255,.12); }
+:root.dark .list .item{
+  background: color-mix(in srgb, var(--widget-tint) 28%, black 72%);
+  border-color: rgba(255,255,255,.12);
+}
 
+/* ---------- Badge ---------- */
 .badge{
   display:inline-flex; align-items:center; gap:6px;
   padding: 3px 8px; border-radius: 999px; font-size:.78rem;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
   color: var(--text);
 }
 
-/* ---------- Lunch grid (rounded cards) ---------- */
+/* ---------- Lunch grid ---------- */
 .lunchGrid{
   display:grid; gap:10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0,1fr));
 }
 @media (max-width: 1400px){ .lunchGrid{ grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 980px){  .lunchGrid{ grid-template-columns: repeat(2,1fr); } }
 @media (max-width: 640px){  .lunchGrid{ grid-template-columns: 1fr; } }
-
 .lunchCard{ border-radius: var(--radius); overflow:hidden; padding:0; }
 .lunchImgWrap{ position:relative; width:100%; height:160px; overflow:hidden; }
 .lunchImg{ width:100%; height:100%; object-fit:cover; display:block; }
@@ -279,11 +250,27 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 }
 .building.selected{ animation: bob 1.2s ease-in-out infinite; }
 
-/* ---------- Tables (if needed) ---------- */
+/* ---------- Modal ---------- */
+.modal{
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(0,0,0,.25);
+}
+.modalBody{
+  width:min(900px, 92vw);
+  max-height: 80vh; overflow:auto; -webkit-overflow-scrolling: touch;
+  padding:10px; border-radius: var(--radius);
+}
+.widgetPicker{
+  display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:10px; margin-top:10px;
+}
+.pickBtn{ padding:10px; cursor:pointer; }
+
+/* ---------- Tables ---------- */
 .table{ width:100%; border-collapse: collapse; }
 .table th, .table td{ padding:8px; border-bottom: 1px solid var(--panel-border); text-align:left; }
 .table tr:hover{ background: rgba(0,0,0,.03); }
 :root.dark .table tr:hover{ background: rgba(255,255,255,.05); }
 
-/* ---------- Safe-area helpers ---------- */
+/* ---------- Footer ---------- */
 .footer{ padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
