@@ -13,33 +13,41 @@ import Lunch from './Lunch'
 import TeacherPanel from './TeacherPanel'
 import AdminPanel from './AdminPanel'
 
-/* --------- Personalisation widgets --------- */
-function QuoteWidget({ config }){
-  const text = config?.text || '“Believe you can and you’re halfway there.”'
-  const author = config?.author || 'Theodore Roosevelt'
+/* ---------- Sticky Note Widgets ---------- */
+function StickyShell({ color='yellow', children }){
   return (
-    <div className="list">
-      <div className="item">
-        <div style={{fontSize:'1.05rem', fontWeight:600}}>{text}</div>
-        <div className="small" style={{marginTop:4}}>— {author}</div>
+    <div className={`stickyNote sticky-${color}`}>
+      <div className="stickyPin" aria-hidden>📌</div>
+      <div className="stickyPaper">
+        {children}
       </div>
     </div>
   )
 }
-function AnimatedWidget({ config }){
-  const src = config?.url || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaXU2bmN0aWhxczlqcmEzbGp5OGM2dnB2eG5sN2NtNDh6c3ZxY2VqNiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/3oEjI6SIIHBdRxXI40/giphy.gif'
-  const cap = config?.caption || 'Keep going!'
+function QuoteNote({ config }){
+  const text = config?.text || '“Small steps every day.”'
+  const author = config?.author || 'Unknown'
   return (
-    <div className="list">
-      <div className="item" style={{padding:6}}>
-        <img src={src} alt="animated" style={{borderRadius:12}} />
-        <div className="small" style={{marginTop:6, textAlign:'center'}}>{cap}</div>
-      </div>
-    </div>
+    <StickyShell color="yellow">
+      <div style={{fontWeight:700, marginBottom:6}}>Motivation</div>
+      <div style={{fontSize:'1.0rem', lineHeight:1.3}}>{text}</div>
+      <div className="small" style={{marginTop:6}}>— {author}</div>
+    </StickyShell>
+  )
+}
+function GifNote({ config }){
+  const url = config?.url || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaXU2bmN0aWhxczlqcmEzbGp5OGM2dnB2eG5sN2NtNDh6c3ZxY2VqNiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/3oEjI6SIIHBdRxXI40/giphy.gif'
+  const cap = config?.caption || 'You got this!'
+  return (
+    <StickyShell color="mint">
+      <div style={{fontWeight:700, marginBottom:6}}>Mood</div>
+      <img src={url} alt="gif" style={{width:'100%', borderRadius:10}} />
+      <div className="small" style={{marginTop:6, textAlign:'center'}}>{cap}</div>
+    </StickyShell>
   )
 }
 
-/* --------- Registry --------- */
+/* ---------- Registry ---------- */
 const REGISTRY = {
   calendar:     { group:'Core', label:'Calendar',     render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
   assignments:  { group:'Core', label:'Assignments',  render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
@@ -51,8 +59,8 @@ const REGISTRY = {
   lunch:        { group:'Core', label:'Lunch',        render: (u,c)=> <Lunch user={u} styleVariant={c.style} density={c.density}/> },
   teacherpanel: { group:'Staff',label:'Teacher Panel',render: (u,c)=> <TeacherPanel user={u} styleVariant={c.style}/> },
   adminpanel:   { group:'Staff',label:'Admin Panel',  render: (u,c)=> <AdminPanel   user={u} styleVariant={c.style}/> },
-  quote:        { group:'Personalisation', label:'Motivational Quote', render: (u,c)=> <QuoteWidget config={c}/> },
-  animated:     { group:'Personalisation', label:'Animated Image',     render: (u,c)=> <AnimatedWidget config={c}/> },
+  quotenote:    { group:'Personal', label:'Quote Note', render: (u,c)=> <QuoteNote  config={c}/> },
+  gifnote:      { group:'Personal', label:'GIF Note',   render: (u,c)=> <GifNote    config={c}/> },
 }
 
 export default function Overview({ user }){
@@ -65,12 +73,10 @@ export default function Overview({ user }){
       : user.role==='teacher'
         ? ['teacherpanel','bulletin','lunch','map']
         : ['adminpanel','bulletin','calendar','lunch'])
-    // compact by default (S)
     return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'compact'}))
   })
   const [adding,setAdding]   = React.useState(false)
   const [showGrid,setShowGrid] = React.useState(false)
-  const [dragging,setDragging] = React.useState(false)
   const gridRef  = React.useRef(null)
   const areaRef  = React.useRef(null)
 
@@ -87,31 +93,26 @@ export default function Overview({ user }){
   const setConfig = (id,patch)=>{ const arr=widgets.map(w=>w.id===id?{...w, ...patch}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
 
-  // Scoped overlay visibility
   React.useEffect(()=>{
     const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
     document.addEventListener('pointerdown', onDocDown)
     return ()=> document.removeEventListener('pointerdown', onDocDown)
   },[])
 
-  // Sortable: long-press 2s, neat auto-swap as you hover others
+  // Sortable with explicit handle (6-dot)
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
-      animation: 120,
+      animation: 140,
       draggable: '.widgetWrap',
-      handle: '.widgetToolbar',      // drag by toolbar (or long-press anywhere due to delay)
-      delay: 2000,                   // 2 seconds long-press
-      delayOnTouchOnly: true,
-      forceFallback: true,
+      handle: '.dragHandle6',
       setData(){},
       ghostClass: 'drag-ghost',
       fallbackClass: 'drag-fallback',
-      filter: 'input,select,textarea,button,a,.no-drag',
-      preventOnFilter: true,
-      onChoose: (evt)=>{ setDragging(true); setShowGrid(true); evt.item.classList.add('draggingPulseSoft') },
+      forceFallback: true,
+      onChoose: (evt)=>{ setShowGrid(true); evt.item.classList.add('draggingPulseSoft') },
       onEnd:    (evt)=>{
-        setDragging(false); setShowGrid(false); evt.item.classList.remove('draggingPulseSoft')
+        setShowGrid(false); evt.item.classList.remove('draggingPulseSoft')
         if (evt.oldIndex===evt.newIndex) return
         const arr=[...widgets]; const [m]=arr.splice(evt.oldIndex,1); arr.splice(evt.newIndex,0,m)
         setWidgets(arr); save(arr)
@@ -121,33 +122,27 @@ export default function Overview({ user }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgets])
 
-  // Simple config editors for personalisation items (inline)
-  const ConfigButton = ({w})=>{
-    if (w.k==='quote'){
+  const ConfigBtn = ({w})=>{
+    if (w.k==='quotenote'){
       return (
         <button className="btn btn-ghost xs" onClick={()=>{
-          const text = prompt('Quote text:', w.text || '“Believe you can and you’re halfway there.”')
-          if (text==null) return
-          const author = prompt('Author:', w.author || 'Theodore Roosevelt')
-          setConfig(w.id, { text, author })
+          const text = prompt('Quote text:', w.text || '“Small steps every day.”'); if(text==null) return
+          const author = prompt('Author:', w.author || 'Unknown'); setConfig(w.id, { text, author })
         }}>✎</button>
       )
     }
-    if (w.k==='animated'){
+    if (w.k==='gifnote'){
       return (
         <button className="btn btn-ghost xs" onClick={()=>{
-          const url = prompt('Animated image URL (GIF/MP4):', w.url || '')
-          if (url==null) return
-          const caption = prompt('Caption:', w.caption || 'Keep going!')
-          setConfig(w.id, { url, caption })
+          const url = prompt('GIF URL:', w.url || ''); if(url==null) return
+          const caption = prompt('Caption:', w.caption || 'You got this!'); setConfig(w.id, { url, caption })
         }}>✎</button>
       )
     }
     return null
   }
 
-  // Two-square spacing guideline (visual): keep a generous gap
-  // (CSS grid gap handles this neatly for half/full width cards)
+  const isAdmin = user.role==='admin'
 
   return (
     <div className="widgetsArea" ref={areaRef} style={{position:'relative'}}>
@@ -169,6 +164,7 @@ export default function Overview({ user }){
           return (
             <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-id={w.id}>
               <div className="widgetToolbar glass">
+                <button className="dragHandle6" title="Drag">⠿</button>
                 <span className="small">{def.label}</span>
                 <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
                   <option value="s">S</option>
@@ -183,7 +179,7 @@ export default function Overview({ user }){
                   <option value="compact">Compact</option>
                   <option value="comfortable">Comfortable</option>
                 </select>
-                <ConfigButton w={w}/>
+                <ConfigBtn w={w}/>
                 <button className="btn btn-ghost xs" title="Remove" onClick={()=>remove(w.id)}>✕</button>
               </div>
               <div className="widgetBody">
@@ -220,15 +216,19 @@ export default function Overview({ user }){
               </>
             )}
 
-            <h4 style={{margin:'14px 0 6px'}}>Personalisation</h4>
-            <div className="widgetPicker">
-              <button className="glass card pickBtn" onClick={()=>add('quote',{ text:'“Small steps every day.”', author:'Unknown' })}>
-                Motivational Quote
-              </button>
-              <button className="glass card pickBtn" onClick={()=>add('animated',{ url:'', caption:'Keep going!' })}>
-                Animated Image
-              </button>
-            </div>
+            {isAdmin && (
+              <>
+                <h4 style={{margin:'14px 0 6px'}}>Personalisation (Admin)</h4>
+                <div className="widgetPicker">
+                  <button className="glass card pickBtn" onClick={()=>add('quotenote',{ text:'“Small steps every day.”', author:'Unknown' })}>
+                    Quote Note
+                  </button>
+                  <button className="glass card pickBtn" onClick={()=>add('gifnote',{ url:'', caption:'You got this!' })}>
+                    GIF Note
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

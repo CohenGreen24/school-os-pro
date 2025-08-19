@@ -274,3 +274,56 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 
 /* ---------- Footer ---------- */
 .footer{ padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
+/* Sidebar width: exactly one icon + text */
+:root{ --sidebar-w: 180px; }
+
+/* Sidebar items: icon + label only (no extra symbol) */
+.sidebarNav .nav .navItem{
+  display:grid;
+  grid-template-columns: 26px 1fr; /* icon | label */
+}
+
+/* Widgets: compact height & sizes */
+.widgetsGrid{ display:grid; gap:10px; grid-template-columns: repeat(12, minmax(0,1fr)); }
+.widget-size-s{ grid-column: span 6; }
+.widget-size-l{ grid-column: span 12; }
+.widgetBody{ padding: 34px 10px 10px; } /* slightly tighter */
+
+/* 6-dot drag handle */
+.dragHandle6{
+  appearance:none; border:1px dashed var(--panel-border);
+  background: transparent; color: var(--muted);
+  border-radius: 8px; padding: 2px 6px; cursor:grab; font-weight:700;
+}
+.dragHandle6:active{ cursor:grabbing; }
+
+/* Sticky note styles */
+.stickyNote{ position:relative; }
+.stickyPin{ position:absolute; top:-6px; left:10px; transform: rotate(-12deg); filter: drop-shadow(0 2px 2px rgba(0,0,0,.2)); }
+.stickyPaper{
+  padding:10px; border-radius: 10px;
+  box-shadow: 0 8px 16px rgba(0,0,0,.08);
+  transform: rotate(-1.2deg);
+}
+.sticky-yellow .stickyPaper{ background: #fff7ad; color:#3a2f00; }
+.sticky-mint   .stickyPaper{ background: #c9ffe0; color:#083a2a; }
+
+/* Fine grid (during drag) stays inside area */
+.fineGrid{
+  position:absolute; inset:0; border-radius: 12px;
+  background-image:
+    linear-gradient(to right, rgba(0,0,0,.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,.07) 1px, transparent 1px);
+  background-size: 14px 14px, 14px 14px;
+  pointer-events:none;
+}
+
+/* Ultra-light pulse only on the chosen widget */
+@keyframes pulseZ {
+  0%   { transform: perspective(800px) translateZ(0) scale(1); }
+  50%  { transform: perspective(800px) translateZ(10px) scale(1.003); }
+  100% { transform: perspective(800px) translateZ(0) scale(1); }
+}
+.draggingPulseSoft{ animation: pulseZ 1300ms ease-in-out infinite; }
+/* Optional: ultra-compact widget body */
+.widgetBody{ padding: 30px 8px 8px; }

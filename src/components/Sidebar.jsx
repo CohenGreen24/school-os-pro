@@ -11,6 +11,7 @@ const ICONS = {
 export default function Sidebar({ user, active, onNavigate }) {
   const isTeacher = user?.role === 'teacher'
   const isAdmin   = user?.role === 'admin'
+
   const BASE = [
     { key:'overview',    label:'Overview' },
     { key:'calendar',    label:'Calendar' },
@@ -38,23 +39,12 @@ export default function Sidebar({ user, active, onNavigate }) {
       .concat(DEFAULT_ITEMS.filter(i=>!parsed.find(p=>p.key===i.key)))
   })
 
-  React.useEffect(()=>{
-    const allowed = new Set(DEFAULT_ITEMS.map(i=>i.key))
-    const merged = items.filter(i=>allowed.has(i.key))
-      .concat(DEFAULT_ITEMS.filter(i=>!items.find(p=>p.key===i.key)))
-    setItems(merged)
-    localStorage.setItem(storageKey, JSON.stringify(merged))
-    // eslint-disable-next-line
-  }, [user?.role])
-
   const listRef = React.useRef(null)
   React.useEffect(()=>{
     if(!listRef.current) return
     const sortable = Sortable.create(listRef.current, {
       animation: 150,
       draggable: '.navItem',
-      delay: 120,              // short-press to drag (prevents accidental taps)
-      delayOnTouchOnly: true,
       setData(){},
       ghostClass: 'drag-ghost',
       onEnd: (evt)=>{
