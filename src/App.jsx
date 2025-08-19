@@ -134,6 +134,10 @@ export default function App() {
   return (
     <div className="container">
       {TopBar}
+<div className="topbar glass" style={{marginBottom:12}}>
+  <div><b>EduGate</b>{user ? <span className="small" style={{marginLeft:8, opacity:.7}}>Welcome, {user.name} • {user.role}</span> : null}</div>
+  {user && <ThemeControls user={user} />}
+</div>
 
       {!user ? (
         <Login onLogin={(u)=>{ setUser(u); setPage('overview') }} />

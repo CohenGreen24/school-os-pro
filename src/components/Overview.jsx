@@ -1,7 +1,7 @@
 import React from 'react'
 import Sortable from 'sortablejs'
 
-// Keep your existing feature components:
+// your feature components
 import Calendar from './Calendar'
 import Assignments from './Assignments'
 import Wallet from './Wallet'
@@ -40,8 +40,8 @@ export default function Overview({ user }){
   })
   const [adding,setAdding]   = React.useState(false)
   const [showGrid,setShowGrid] = React.useState(false)
-  const gridRef  = React.useRef(null)
   const areaRef  = React.useRef(null)
+  const gridRef  = React.useRef(null)
 
   const save = (arr)=> localStorage.setItem(storageKey, JSON.stringify(arr))
   const add  = (k)=>{ const id=String(Date.now()); const arr=[...widgets,{id,k,size:'s',style:'glass',density:'comfortable'}]; setWidgets(arr); save(arr); setAdding(false) }
@@ -51,49 +51,48 @@ export default function Overview({ user }){
   const setDensity = (id,density)=>{ const arr=widgets.map(w=>w.id===id?{...w,density}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
 
-  // Hide grid overlay when clicking outside
+  // Scoped overlay: click outside to hide if not dragging
   React.useEffect(()=>{
     const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
     document.addEventListener('pointerdown', onDocDown)
     return ()=> document.removeEventListener('pointerdown', onDocDown)
   },[])
 
-  // SortableJS init — long-press drag (iPad safe)
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
-      animation: 160,
+      animation: 140,
       draggable: '.widgetWrap',
-      handle: '.widgetToolbar',            // you can also drag by toolbar
-      delay: 150,                          // long-press to start on touch
+      handle: '.widgetToolbar',
+      delay: 140,
       delayOnTouchOnly: true,
       forceFallback: true,
-      fallbackOnBody: true,
+      fallbackOnBody: false,
       fallbackTolerance: 3,
-      setData: function () {},             // prevent iOS ghost text selection
+      setData(){},
       ghostClass: 'drag-ghost',
       fallbackClass: 'drag-fallback',
-      filter: 'input,select,textarea,button,a,.no-drag,.widgetBody', // don’t start drag from these
+      filter: 'input,select,textarea,button,a,.no-drag',
       preventOnFilter: true,
-      onChoose: (evt)=>{ setShowGrid(true); evt.item.classList.add('draggingPulse') },
+      onChoose: (evt)=>{ setShowGrid(true); evt.item.classList.add('draggingPulseSoft') },
       onStart:  ()=>{ setShowGrid(true) },
       onEnd:    (evt)=>{
         setShowGrid(false)
-        evt.item.classList.remove('draggingPulse')
+        evt.item.classList.remove('draggingPulseSoft')
         const from = evt.oldIndex, to = evt.newIndex
         if(from === to) return
         const arr = [...widgets]
-        const [m] = arr.splice(from, 1)
-        arr.splice(to, 0, m)               // reorder/swap logic (valid in 12-col grid)
+        const [m] = arr.splice(from,1)
+        arr.splice(to,0,m)
         setWidgets(arr); save(arr)
       }
     })
     return ()=> sortable.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gridRef, widgets])
+  }, [widgets])
 
   return (
-    <div className="widgetsArea" ref={areaRef}>
+    <div className="widgetsArea" ref={areaRef} style={{position:'relative'}}>
       <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
         <h2>Overview</h2>
         <div className="flex" style={{gap:8}}>
@@ -102,9 +101,13 @@ export default function Overview({ user }){
         </div>
       </div>
 
+      {/* Overlay INSIDE the widgets area only */}
       {showGrid && (
-        <div className="gridOverlay" aria-hidden="true">
-          <div className="gridOverlayInner">
+        <div className="gridOverlay" style={{position:'absolute', inset:0}}>
+          <div className="gridOverlayInner" style={{
+            position:'absolute', inset:'48px 0 0 0',
+            display:'grid', gridTemplateColumns:'repeat(12,1fr)', gap:'12px'
+          }}>
             {Array.from({length:12}).map((_,i)=><div key={i} className="gridCol" />)}
           </div>
         </div>
@@ -117,7 +120,6 @@ export default function Overview({ user }){
             <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-id={w.id}>
               <div className="widgetToolbar glass">
                 <span className="small">{def.label}</span>
-                {/* S + L only */}
                 <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
                   <option value="s">S</option>
                   <option value="l">L</option>

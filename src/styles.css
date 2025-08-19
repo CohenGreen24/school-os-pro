@@ -189,18 +189,25 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 .drag-fallback{ opacity:.9; transform: scale(1.02); }
 
 /* Drag pulse (comes closer ↔ back) */
+/* Softer drag pulse */
 @keyframes pulseZ {
-  0%   { transform: perspective(800px) translateZ(0) scale(1);     filter: drop-shadow(0 10px 18px rgba(0,0,0,.15)); }
-  50%  { transform: perspective(800px) translateZ(40px) scale(1.03); filter: drop-shadow(0 16px 28px rgba(0,0,0,.22)); }
-  100% { transform: perspective(800px) translateZ(0) scale(1);     filter: drop-shadow(0 10px 18px rgba(0,0,0,.15)); }
+  0%   { transform: perspective(800px) translateZ(0) scale(1);     filter: drop-shadow(0 6px 10px rgba(0,0,0,.12)); }
+  50%  { transform: perspective(800px) translateZ(20px) scale(1.01); filter: drop-shadow(0 10px 16px rgba(0,0,0,.18)); }
+  100% { transform: perspective(800px) translateZ(0) scale(1);     filter: drop-shadow(0 6px 10px rgba(0,0,0,.12)); }
 }
-.draggingPulse{ animation: pulseZ 900ms ease-in-out infinite; will-change: transform, filter; }
+.draggingPulseSoft{ animation: pulseZ 1200ms ease-in-out infinite; }
+
+/* Softer building bob */
+@keyframes bob{
+  0% { transform: translateY(0);   filter: drop-shadow(0 4px 6px rgba(0,0,0,.14)); }
+  50%{ transform: translateY(-2px);filter: drop-shadow(0 7px 10px rgba(0,0,0,.18)); }
+  100%{transform: translateY(0);   filter: drop-shadow(0 4px 6px rgba(0,0,0,.14)); }
+}
+
 
 /* Grid overlay shown while dragging */
 .gridOverlay{ position: sticky; top:0; z-index:40; height:0; }
-.gridOverlay::before{
-  content:''; position:fixed; inset:0; z-index:40; backdrop-filter: blur(2px); pointer-events:none;
-}
+
 .gridOverlayInner{
   position: fixed; inset: 80px 16px 16px 16px; z-index:41;
   display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; pointer-events:none;

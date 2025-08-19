@@ -25,59 +25,66 @@ export default function Sidebar({ user, active, onNavigate }) {
   const storageKey = `sidebar_${user?.id || 'anon'}`
   const [items, setItems] = React.useState(() => {
     const saved = localStorage.getItem(storageKey)
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      const allowed = new Set(DEFAULT_ITEMS.map(i => i.key))
-      return parsed.filter(i => allowed.has(i.key))
-                   .concat(DEFAULT_ITEMS.filter(i => !parsed.find(p => p.key === i.key)))
-    }
-    return DEFAULT_ITEMS
+    if (!saved) return DEFAULT_ITEMS
+    const parsed = JSON.parse(saved)
+    const allowed = new Set(DEFAULT_ITEMS.map(i=>i.key))
+    return parsed.filter(i=>allowed.has(i.key))
+      .concat(DEFAULT_ITEMS.filter(i=>!parsed.find(p=>p.key===i.key)))
   })
 
-  React.useEffect(() => {
-    const allowed = new Set(DEFAULT_ITEMS.map(i => i.key))
-    const merged = items.filter(i => allowed.has(i.key))
-                        .concat(DEFAULT_ITEMS.filter(i => !items.find(p => p.key === i.key)))
+  React.useEffect(()=>{
+    const allowed = new Set(DEFAULT_ITEMS.map(i=>i.key))
+    const merged = items.filter(i=>allowed.has(i.key))
+      .concat(DEFAULT_ITEMS.filter(i=>!items.find(p=>p.key===i.key)))
     setItems(merged)
     localStorage.setItem(storageKey, JSON.stringify(merged))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role])
 
   const listRef = React.useRef(null)
-  React.useEffect(() => {
-    if (!listRef.current) return
+  React.useEffect(()=>{
+    if(!listRef.current) return
     const sortable = Sortable.create(listRef.current, {
       animation: 150,
       handle: '.dragHandle',
       draggable: '.navItem',
       ghostClass: 'drag-ghost',
-      setData: function(){}, // iOS selection guard
-      onEnd: (evt) => {
+      setData(){}, // iOS text-select guard
+      onEnd: (evt)=>{
         if (evt.oldIndex === evt.newIndex) return
         const arr = [...items]
-        const [m] = arr.splice(evt.oldIndex, 1)
-        arr.splice(evt.newIndex, 0, m)
+        const [m] = arr.splice(evt.oldIndex,1)
+        arr.splice(evt.newIndex,0,m)
         setItems(arr)
         localStorage.setItem(storageKey, JSON.stringify(arr))
-      },
+      }
     })
-    return () => sortable.destroy()
+    return ()=> sortable.destroy()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items])
 
   return (
-    <aside className="sidebarNav glass">
+    <aside
+      className="sidebarNav glass"
+      style={{
+        position:'sticky',
+        top:8,
+        alignSelf:'start',
+        height:'fit-content',
+        minWidth:'var(--sidebar-w)',
+      }}
+    >
       <div className="brand">
         <div className="title">School OS</div>
-        <div className="subtitle">{user?.name || 'Guest'} {isAdmin ? '• Admin' : isTeacher ? '• Teacher' : ''}</div>
+        <div className="subtitle">{user?.name || 'Guest'} {isAdmin?'• Admin':isTeacher?'• Teacher':''}</div>
       </div>
 
       <div className="nav" ref={listRef}>
-        {items.map((item) => (
+        {items.map((item)=>(
           <button
             key={item.key}
-            className={`navItem ${active === item.key ? 'active' : ''}`}
-            onClick={() => onNavigate(item.key)}
+            className={`navItem ${active===item.key?'active':''}`}
+            onClick={()=>onNavigate(item.key)}
           >
             <span className="dragHandle" title="Drag to reorder">⋮⋮</span>
             <span className="label">{item.label}</span>

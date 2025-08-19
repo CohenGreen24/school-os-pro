@@ -8,9 +8,8 @@ export const THEMES = {
 
 export function applyTheme(themeKey='classic', accent){
   const t = THEMES[themeKey] || THEMES.classic
-  const acc = accent || t.bg
   const root = document.documentElement
-  root.style.setProperty('--accent', acc)
+  root.style.setProperty('--accent', accent || t.bg)
   root.style.setProperty('--radius', t.radius)
   root.style.setProperty('--glass-blur', t.blur)
 }
