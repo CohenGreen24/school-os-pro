@@ -1,4 +1,5 @@
 import React from 'react'
+import Sortable from 'sortablejs'
 import Calendar from './Calendar'
 import Assignments from './Assignments'
 import Wallet from './Wallet'
@@ -24,31 +25,43 @@ export default function Overview({ user }){
   const [widgets,setWidgets] = React.useState(()=>{ 
     const stored = JSON.parse(localStorage.getItem(key)||'[]')
     if(stored.length) return stored
-    return (user.role==='student'
-      ? [{k:'calendar'},{k:'assignments'},{k:'wallet'},{k:'bulletin'}]
-      : [{k:'bulletin'},{k:'lunch'},{k:'appointments'},{k:'map'}]
-    ).map((w,i)=>({id:String(i+1), k:w.k, size:'m', style:'glass', density:'comfortable'}))
+    const seed = (user.role==='student'
+      ? ['calendar','assignments','wallet','bulletin']
+      : ['bulletin','lunch','appointments','map'])
+    return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'comfortable'}))
   })
   const [adding,setAdding] = React.useState(false)
-  const [drag,setDrag] = React.useState(null)
+  const gridRef = React.useRef(null)
 
   const save = (arr)=> localStorage.setItem(key, JSON.stringify(arr))
-  const start = (id)=> setDrag(id)
-  const over = (e)=> e.preventDefault()
-  const drop = (id)=>{ if(!drag || drag===id) return
-    const from = widgets.findIndex(w=>w.id===drag)
-    const to   = widgets.findIndex(w=>w.id===id)
-    if(from<0 || to<0) return
-    const arr=[...widgets]; const [m]=arr.splice(from,1); arr.splice(to,0,m)
-    setWidgets(arr); save(arr); setDrag(null)
-  }
-
-  const add = (k)=>{ const id=String(Date.now()); const arr=[...widgets, {id,k,size:'m',style:'glass',density:'comfortable'}]; setWidgets(arr); save(arr); setAdding(false) }
+  const add = (k)=>{ const id=String(Date.now()); const arr=[...widgets, {id,k,size:'s',style:'glass',density:'comfortable'}]; setWidgets(arr); save(arr); setAdding(false) }
   const remove = (id)=>{ const arr=widgets.filter(w=>w.id!==id); setWidgets(arr); save(arr) }
   const setSize = (id,size)=>{ const arr=widgets.map(w=>w.id===id?{...w,size}:w); setWidgets(arr); save(arr) }
   const setStyle = (id,style)=>{ const arr=widgets.map(w=>w.id===id?{...w,style}:w); setWidgets(arr); save(arr) }
   const setDensity = (id,density)=>{ const arr=widgets.map(w=>w.id===id?{...w,density}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(key); window.location.reload() }
+
+  // Touch-friendly drag using SortableJS
+  React.useEffect(()=>{
+    if(!gridRef.current) return
+    const sortable = Sortable.create(gridRef.current, {
+      animation: 150,
+      handle: '.widgetToolbar',       // drag by toolbar only (prevents text selection)
+      draggable: '.widgetWrap',
+      ghostClass: 'drag-ghost',
+      onEnd: (evt)=>{
+        const from = evt.oldIndex
+        const to   = evt.newIndex
+        if(from === to) return
+        const arr=[...widgets]
+        const [m] = arr.splice(from,1)
+        arr.splice(to,0,m)
+        setWidgets(arr); save(arr)
+      }
+    })
+    return ()=> sortable.destroy()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gridRef, widgets])
 
   return (
     <div className="widgetsArea">
@@ -60,32 +73,31 @@ export default function Overview({ user }){
         </div>
       </div>
 
-      <div className="widgetsGrid">
-        {widgets.map(w=>{
+      <div className="widgetsGrid" ref={gridRef}>
+        {widgets.map((w,idx)=>{
           const def = REGISTRY[w.k]; if(!def) return null
-          const dragging = drag===w.id
           return (
-            <div key={w.id}
-              className={`widgetWrap widget-size-${w.size} ${dragging?'dragging':''}`}
-              draggable
-              onDragStart={()=>start(w.id)}
-              onDragOver={over}
-              onDrop={()=>drop(w.id)}
-            >
+            <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-index={idx}>
               <div className="widgetToolbar glass">
                 <span className="small">{def.label}</span>
+                {/* sizes: only Small (s) and Large (l) */}
                 <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
-                  <option value="s">S</option><option value="m">M</option><option value="l">L</option>
+                  <option value="s">S</option>
+                  <option value="l">L</option>
                 </select>
                 <select className="input xs" value={w.style} onChange={e=>setStyle(w.id, e.target.value)}>
-                  <option value="glass">Glass</option><option value="solid">Solid</option><option value="outline">Outline</option>
+                  <option value="glass">Glass</option>
+                  <option value="solid">Solid</option>
+                  <option value="outline">Outline</option>
                 </select>
                 <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
-                  <option value="comfortable">Comfortable</option><option value="compact">Compact</option>
+                  <option value="comfortable">Comfortable</option>
+                  <option value="compact">Compact</option>
                 </select>
                 <button className="btn btn-ghost xs" title="Remove" onClick={()=>remove(w.id)}>✕</button>
               </div>
-              <div className="widgetBody">
+              {/* scrollable body for long lists */}
+              <div className="widgetBody scrollable">
                 {def.render({ ...user }, { style:w.style, density:w.density })}
               </div>
             </div>

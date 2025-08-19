@@ -119,3 +119,24 @@
 .dark .widgetToolbar{ background: rgba(20,20,25,.55); border-color: rgba(255,255,255,.12) }
 .widgetToolbar .input.xs{ min-width:68px }
 .widgetBody{ padding-top:44px } /* leaves space below the floating toolbar */
+/* Only S and L sizes now (no Medium) */
+.widget-size-s{ grid-column: span 4; }  /* 3 per row on iPad landscape if 12-col grid */
+.widget-size-l{ grid-column: span 12; } /* full width */
+
+/* Make widget content scrollable, touch-friendly */
+.widgetBody.scrollable{
+  max-height: 420px;               /* adjust per your taste; L can hold more */
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* While dragging */
+.drag-ghost{ opacity:.6; }
+
+/* Prevent text selection while dragging or tapping in widgets */
+.widgetsArea, .widgetWrap, .widgetToolbar, .widgetBody{
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  touch-action: manipulation;      /* helps prevent double-tap zoom / text highlight */
+}
