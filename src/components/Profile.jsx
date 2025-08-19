@@ -1,16 +1,24 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-const randId = () =>
-  (window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))
-
-async function uploadAvatar(file, userId) {
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-  const path = `users/${userId}/${randId()}.${ext}`
-  const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+async function getSignedUpload(studentId, uploaderId, filename){
+  const { data, error } = await supabase.rpc('get_signed_avatar_upload', {
+    p_student_id: studentId,
+    p_uploader_id: uploaderId,
+    p_filename: filename
+  })
   if (error) throw error
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-  return data.publicUrl
+  const row = Array.isArray(data) ? data[0] : data
+  return row // { upload_url, object_path, public_url }
+}
+
+async function putSigned(url, file){
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file
+  })
+  if (!res.ok) throw new Error('Signed upload failed: '+res.status)
 }
 
 export default function Profile({ user, canManageStudent=false, styleVariant='glass' }){
@@ -18,10 +26,13 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
   const [target,setTarget] = React.useState(user)
   const [saving,setSaving] = React.useState(false)
   const isTeacher = user.role==='teacher'
+  const isAdmin   = user.role==='admin'
 
-  // Load students list for teachers
+  React.useEffect(()=>{ setTarget(user) },[user])
+
+  // Load students for teacher/admin lists
   React.useEffect(()=>{ (async()=>{
-    if(isTeacher && canManageStudent){
+    if(isTeacher || isAdmin){
       const { data } = await supabase
         .from('users')
         .select('id,name,code,role,year_level,care_group,email,emergency_contact_name,emergency_contact_phone,avatar_url')
@@ -29,10 +40,7 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
         .order('name')
       setStudents(data||[])
     }
-  })() },[isTeacher, canManageStudent])
-
-  // Keep target in sync when user changes
-  React.useEffect(()=>{ setTarget(user) },[user])
+  })() },[isTeacher, isAdmin])
 
   const cardClass = styleVariant==='solid' ? 'card solid'
                    : styleVariant==='outline' ? 'card outline'
@@ -63,9 +71,12 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
   const handleAvatarPick = async (file) => {
     if(!file || !target) return
     try{
-      const url = await uploadAvatar(file, target.id)
-      await supabase.from('users').update({ avatar_url: url }).eq('id', target.id)
-      // Refresh local target row
+      // Request signed upload URL from backend (enforces teacher-student mapping)
+      const signed = await getSignedUpload(target.id, user.id, file.name)
+      await putSigned(signed.upload_url, file)
+      // Save avatar_url to user row
+      await supabase.from('users').update({ avatar_url: signed.public_url }).eq('id', target.id)
+      // Refresh
       const { data } = await supabase.from('users').select('*').eq('id', target.id).single()
       if (data) setTarget(prev=>({ ...prev, ...data }))
       alert('Avatar updated')
@@ -74,11 +85,14 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
     }
   }
 
+  // Only allow changing other students if teacher/admin; students can always change their own
+  const canEditTarget = (isTeacher || isAdmin || target?.id === user.id)
+
   return (
     <div className={cardClass}>
       <h2>Profile</h2>
 
-      {isTeacher && canManageStudent && (
+      {(isTeacher || isAdmin) && canManageStudent && (
         <div className="glass card" style={{marginBottom:12}}>
           <b>Edit target</b>
           <div className="row narrow" style={{gridTemplateColumns:'1fr'}}>
@@ -105,10 +119,10 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
           <b>Photo</b>
           <div className="avatarBox">
             <img
-              src={target?.avatar_url || `https://api.dicebear.com/7.0/shapes/svg?seed=${encodeURIComponent(target?.name||'User')}`}
+              src={target?.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(target?.name||'User')}`}
               alt="avatar"
               className="avatar"
-              onError={(e)=>{ e.currentTarget.src = `https://api.dicebear.com/7.0/shapes/svg?seed=${encodeURIComponent(target?.name||'User')}` }}
+              onError={(e)=>{ e.currentTarget.src = `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(target?.name||'User')}` }}
             />
           </div>
           <input
@@ -116,11 +130,10 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
             type="file"
             accept="image/*"
             capture="environment"
+            disabled={!canEditTarget}
             onChange={e=>handleAvatarPick(e.target.files?.[0] || null)}
           />
-          <div className="small" style={{opacity:.7, marginTop:6}}>
-            Tip: You can take a new photo with the iPad camera.
-          </div>
+          {!canEditTarget && <div className="small" style={{opacity:.7, marginTop:6}}>You can’t change this avatar.</div>}
         </div>
 
         <div className="glass card">
@@ -128,27 +141,27 @@ export default function Profile({ user, canManageStudent=false, styleVariant='gl
           <div className="row narrow" style={{gridTemplateColumns:'1fr 1fr'}}>
             <div>
               <label className="small">Full name</label>
-              <input className="input" value={target?.name||''} onChange={e=>setTarget(t=>({...t, name:e.target.value}))}/>
+              <input className="input" value={target?.name||''} onChange={e=>setTarget(t=>({...t, name:e.target.value}))} />
             </div>
             <div>
               <label className="small">Email</label>
-              <input className="input" value={target?.email||''} onChange={e=>setTarget(t=>({...t, email:e.target.value}))}/>
+              <input className="input" value={target?.email||''} onChange={e=>setTarget(t=>({...t, email:e.target.value}))} />
             </div>
             <div>
               <label className="small">Year level</label>
-              <input className="input" type="number" min="1" max="13" value={target?.year_level||''} onChange={e=>setTarget(t=>({...t, year_level:e.target.value}))}/>
+              <input className="input" type="number" min="1" max="13" value={target?.year_level||''} onChange={e=>setTarget(t=>({...t, year_level:e.target.value}))} />
             </div>
             <div>
               <label className="small">Care group</label>
-              <input className="input" value={target?.care_group||''} onChange={e=>setTarget(t=>({...t, care_group:e.target.value}))}/>
+              <input className="input" value={target?.care_group||''} onChange={e=>setTarget(t=>({...t, care_group:e.target.value}))} />
             </div>
             <div>
               <label className="small">Emergency name</label>
-              <input className="input" value={target?.emergency_contact_name||''} onChange={e=>setTarget(t=>({...t, emergency_contact_name:e.target.value}))}/>
+              <input className="input" value={target?.emergency_contact_name||''} onChange={e=>setTarget(t=>({...t, emergency_contact_name:e.target.value}))} />
             </div>
             <div>
               <label className="small">Emergency phone</label>
-              <input className="input" value={target?.emergency_contact_phone||''} onChange={e=>setTarget(t=>({...t, emergency_contact_phone:e.target.value}))}/>
+              <input className="input" value={target?.emergency_contact_phone||''} onChange={e=>setTarget(t=>({...t, emergency_contact_phone:e.target.value}))} />
             </div>
             <div>
               <label className="small">Role</label>

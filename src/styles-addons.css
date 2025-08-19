@@ -140,3 +140,87 @@
   -ms-user-select: none;
   touch-action: manipulation;      /* helps prevent double-tap zoom / text highlight */
 }
+/* Sidebar look + drag affordances */
+.sidebarNav {
+  border-radius: 16px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebarNav .brand {
+  padding: 10px 8px 6px;
+  border-radius: 12px;
+}
+.sidebarNav .brand .title { font-weight: 700; }
+.sidebarNav .brand .subtitle { opacity: .7; font-size: .9rem; }
+
+.sidebarNav .nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebarNav .nav .navItem {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px;
+  min-height: 44px;           /* touch target */
+  border-radius: 12px;
+  text-align: left;
+  border: 1px solid rgba(0,0,0,.06);
+  background: rgba(255,255,255,.5);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  user-select: none;
+}
+.dark .sidebarNav .nav .navItem {
+  background: rgba(20,20,25,.5);
+  border-color: rgba(255,255,255,.1);
+}
+
+.sidebarNav .nav .navItem.active {
+  border-color: rgba(14,165,233,.45);
+  box-shadow: 0 0 0 2px rgba(14,165,233,.15) inset;
+}
+
+.sidebarNav .nav .navItem .dragHandle {
+  font-weight: 700;
+  opacity: .4;
+  cursor: grab;
+  user-select: none;
+}
+.sidebarNav .nav .navItem:active .dragHandle { cursor: grabbing; }
+
+.sidebarFooter {
+  margin-top: auto;
+  padding: 8px 6px 4px;
+  opacity: .7;
+}
+
+/* Sortable ghost */
+.drag-ghost { opacity: .6; }
+
+/* Prevent text selection while dragging */
+.sidebarNav, .sidebarNav .nav .navItem, .dragHandle {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+:root{
+  --accent:#0ea5e9;
+  --radius:16px;
+  --glass-blur:12px;
+}
+.glass{
+  backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.btn.btn-primary{
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, black 0%);
+}

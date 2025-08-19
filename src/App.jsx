@@ -11,6 +11,9 @@ import Appointments from './components/Appointments'
 import BulletinBoard from './components/BulletinBoard'
 import MapPanel from './components/MapPanel'
 import Lunch from './components/Lunch'
+import ThemeControls from './components/ThemeControls'
+import { applyTheme } from './theme'
+
 
 function useTheme() {
   const [theme,setTheme] = useState(localStorage.getItem('theme') || 'light')
@@ -25,8 +28,10 @@ function useTheme() {
 function Toggle({theme,setTheme}) {
   return (
     <button className="btn" onClick={() => setTheme(theme==='dark'?'light':'dark')}>
-      {theme==='dark' ? '🌙 Dark' : '🌞 Light'}
+      {theme==='dark' ? '🌙 Dark' : '🌞 Light'} <ThemeControls user={user} />
+
     </button>
+    
   )
 }
 
@@ -154,3 +159,11 @@ export default function App() {
     </div>
   )
 }
+React.useEffect(()=>{
+  const key = `theme_${user.id}`
+  const theme = localStorage.getItem(`${key}_theme`) || 'classic'
+  const accent = localStorage.getItem(`${key}_accent`) || '#0ea5e9'
+  const mode = localStorage.getItem(`${key}_mode`) || 'light'
+  document.documentElement.classList.toggle('dark', mode==='dark')
+  applyTheme(theme, accent)
+}, [user.id])
