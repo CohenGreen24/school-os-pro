@@ -1,4 +1,4 @@
-// src/components/Overview.jsx
+// src/components/Overview.jsx  (FULL REPLACEMENT)
 import React from 'react'
 import Sortable from 'sortablejs'
 
@@ -13,7 +13,7 @@ import Lunch from './Lunch'
 import TeacherPanel from './TeacherPanel'
 import AdminPanel from './AdminPanel'
 
-/* ---------- Sticky Note Widgets ---------- */
+/* Optional sticky note widgets (admin adds via your existing flows) */
 function StickyShell({ color='yellow', children }){
   return (
     <div className={`stickyNote sticky-${color}`}>
@@ -34,7 +34,7 @@ function QuoteNote({ config }){
   )
 }
 function GifNote({ config }){
-  const url = config?.url || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaXU2bmN0aWhxczlqcmEzbGp5OGM2dnB2eG5sN2NtNDh6c3ZxY2VqNiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/3oEjI6SIIHBdRxXI40/giphy.gif'
+  const url = config?.url || 'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif'
   const cap = config?.caption || 'You got this!'
   return (
     <StickyShell color="mint">
@@ -45,7 +45,6 @@ function GifNote({ config }){
   )
 }
 
-/* ---------- Registry ---------- */
 const REGISTRY = {
   calendar:     { group:'Core', label:'Calendar',     render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
   assignments:  { group:'Core', label:'Assignments',  render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
@@ -67,12 +66,12 @@ export default function Overview({ user }){
   const [widgets,setWidgets] = React.useState(()=>{ 
     const saved = JSON.parse(localStorage.getItem(storageKey)||'[]')
     if (saved.length) return saved
-    // Seed 8 small widgets (no scrolling)
+    // Seed EXACTLY 6 small widgets (3x2)
     const seed = (user.role==='student'
-      ? ['calendar','assignments','wallet','bulletin','library','lunch','appointments','map']
+      ? ['calendar','assignments','wallet','bulletin','library','lunch']
       : user.role==='teacher'
-        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library','map','appointments']
-        : ['adminpanel','calendar','bulletin','lunch','assignments','library','map','appointments'])
+        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library']
+        : ['adminpanel','calendar','bulletin','lunch','assignments','library'])
     return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'compact'}))
   })
   const [adding,setAdding]   = React.useState(false)
@@ -93,20 +92,18 @@ export default function Overview({ user }){
   const setConfig = (id,patch)=>{ const arr=widgets.map(w=>w.id===id?{...w, ...patch}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
 
-  // Show grid only while dragging inside area
   React.useEffect(()=>{
     const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
     document.addEventListener('pointerdown', onDocDown)
     return ()=> document.removeEventListener('pointerdown', onDocDown)
   },[])
 
-  // Sortable: explicit 6-dot handle; neat auto-swap
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
       animation: 120,
       draggable: '.widgetWrap',
-      handle: '.dragHandle6',
+      handle: '.dragHandle6',     // 6-dot only
       setData(){},
       ghostClass: 'drag-ghost',
       fallbackClass: 'drag-fallback',
@@ -123,7 +120,6 @@ export default function Overview({ user }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgets])
 
-  // inline editors for notes
   const ConfigBtn = ({w})=>{
     if (w.k==='quotenote'){
       return (
@@ -144,11 +140,10 @@ export default function Overview({ user }){
     return null
   }
 
-  const isAdmin = user.role==='admin'
-  const existingNotes = widgets.filter(w=>w.k==='quotenote' || w.k==='gifnote')
+  const REG = REGISTRY
 
   return (
-    <div className="widgetsArea" ref={areaRef} style={{position:'relative'}}>
+    <div className="widgetsArea" ref={areaRef}>
       <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
         <h2>Overview</h2>
         <div className="flex" style={{gap:8}}>
@@ -157,13 +152,11 @@ export default function Overview({ user }){
         </div>
       </div>
 
-      {showGrid && (
-        <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'34px 0 0 0'}}></div>
-      )}
+      {showGrid && <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'34px 0 0 0'}}/>}
 
       <div className="widgetsGrid" ref={gridRef}>
         {widgets.map((w)=>{
-          const def = REGISTRY[w.k]; if(!def) return null
+          const def = REG[w.k]; if(!def) return null
           return (
             <div key={w.id} className={`widgetWrap widget-size-${w.size}`} data-id={w.id}>
               <div className="widgetToolbar glass">
@@ -203,7 +196,7 @@ export default function Overview({ user }){
 
             <h4 style={{margin:'10px 0 6px'}}>Core</h4>
             <div className="widgetPicker">
-              {Object.entries(REGISTRY).filter(([k,v])=>v.group==='Core').map(([k,def])=>(
+              {Object.entries(REG).filter(([k,v])=>v.group==='Core').map(([k,def])=>(
                 <button key={k} className="glass card pickBtn" onClick={()=>add(k)}>{def.label}</button>
               ))}
             </div>
@@ -212,44 +205,23 @@ export default function Overview({ user }){
               <>
                 <h4 style={{margin:'14px 0 6px'}}>Staff</h4>
                 <div className="widgetPicker">
-                  {Object.entries(REGISTRY).filter(([k,v])=>v.group==='Staff').map(([k,def])=>(
+                  {Object.entries(REG).filter(([k,v])=>v.group==='Staff').map(([k,def])=>(
                     <button key={k} className="glass card pickBtn" onClick={()=>add(k)}>{def.label}</button>
                   ))}
                 </div>
               </>
             )}
 
-            {isAdmin && (
-              <>
-                <h4 style={{margin:'14px 0 6px'}}>Personalisation (Admin)</h4>
-                <div className="widgetPicker">
-                  <button className="glass card pickBtn" onClick={()=>add('quotenote',{ text:'“Small steps every day.”', author:'Unknown' })}>
-                    New Quote Note
-                  </button>
-                  <button className="glass card pickBtn" onClick={()=>add('gifnote',{ url:'', caption:'You got this!' })}>
-                    New GIF Note
-                  </button>
-                </div>
-
-                {existingNotes.length>0 && (
-                  <>
-                    <h4 style={{margin:'14px 0 6px'}}>Your Sticky Notes (click to duplicate)</h4>
-                    <div className="widgetPicker">
-                      {existingNotes.map((n)=>(
-                        <button
-                          key={`tpl-${n.id}`}
-                          className="glass card pickBtn"
-                          onClick={()=>add(n.k, {...n, id: undefined})}
-                          title="Duplicate this note"
-                        >
-                          {n.k==='quotenote' ? `“${(n.text||'…').slice(0,22)}”` : (n.caption || 'GIF Note')}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
+            {/* Personalisation entries are added elsewhere by admin; keep placeholders if you wish */}
+            <h4 style={{margin:'14px 0 6px'}}>Personalisation</h4>
+            <div className="widgetPicker">
+              <button className="glass card pickBtn" onClick={()=>add('quotenote',{ text:'“Small steps every day.”', author:'Unknown' })}>
+                Quote Note
+              </button>
+              <button className="glass card pickBtn" onClick={()=>add('gifnote',{ url:'', caption:'You got this!' })}>
+                GIF Note
+              </button>
+            </div>
           </div>
         </div>
       )}
