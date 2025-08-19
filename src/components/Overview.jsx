@@ -1,7 +1,7 @@
+// src/components/Overview.jsx
 import React from 'react'
 import Sortable from 'sortablejs'
 
-// your feature components
 import Calendar from './Calendar'
 import Assignments from './Assignments'
 import Wallet from './Wallet'
@@ -36,7 +36,8 @@ export default function Overview({ user }){
       : user.role==='teacher'
         ? ['teacherpanel','bulletin','lunch','map']
         : ['adminpanel','bulletin','calendar','lunch'])
-    return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'comfortable'}))
+    // default small to reduce page height
+    return seed.map((k,i)=>({id:String(i+1), k, size:'s', style:'glass', density:'compact'}))
   })
   const [adding,setAdding]   = React.useState(false)
   const [showGrid,setShowGrid] = React.useState(false)
@@ -44,14 +45,13 @@ export default function Overview({ user }){
   const gridRef  = React.useRef(null)
 
   const save = (arr)=> localStorage.setItem(storageKey, JSON.stringify(arr))
-  const add  = (k)=>{ const id=String(Date.now()); const arr=[...widgets,{id,k,size:'s',style:'glass',density:'comfortable'}]; setWidgets(arr); save(arr); setAdding(false) }
+  const add  = (k)=>{ const id=String(Date.now()); const arr=[...widgets,{id,k,size:'s',style:'glass',density:'compact'}]; setWidgets(arr); save(arr); setAdding(false) }
   const remove = (id)=>{ const arr=widgets.filter(w=>w.id!==id); setWidgets(arr); save(arr) }
   const setSize = (id,size)=>{ const arr=widgets.map(w=>w.id===id?{...w,size}:w); setWidgets(arr); save(arr) }
   const setStyle = (id,style)=>{ const arr=widgets.map(w=>w.id===id?{...w,style}:w); setWidgets(arr); save(arr) }
   const setDensity = (id,density)=>{ const arr=widgets.map(w=>w.id===id?{...w,density}:w); setWidgets(arr); save(arr) }
   const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
 
-  // Scoped overlay: click outside to hide if not dragging
   React.useEffect(()=>{
     const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
     document.addEventListener('pointerdown', onDocDown)
@@ -61,29 +61,22 @@ export default function Overview({ user }){
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
-      animation: 140,
+      animation: 120,
       draggable: '.widgetWrap',
       handle: '.widgetToolbar',
-      delay: 140,
+      delay: 120,
       delayOnTouchOnly: true,
       forceFallback: true,
-      fallbackOnBody: false,
-      fallbackTolerance: 3,
       setData(){},
       ghostClass: 'drag-ghost',
       fallbackClass: 'drag-fallback',
       filter: 'input,select,textarea,button,a,.no-drag',
       preventOnFilter: true,
       onChoose: (evt)=>{ setShowGrid(true); evt.item.classList.add('draggingPulseSoft') },
-      onStart:  ()=>{ setShowGrid(true) },
       onEnd:    (evt)=>{
-        setShowGrid(false)
-        evt.item.classList.remove('draggingPulseSoft')
-        const from = evt.oldIndex, to = evt.newIndex
-        if(from === to) return
-        const arr = [...widgets]
-        const [m] = arr.splice(from,1)
-        arr.splice(to,0,m)
+        setShowGrid(false); evt.item.classList.remove('draggingPulseSoft')
+        if (evt.oldIndex===evt.newIndex) return
+        const arr=[...widgets]; const [m]=arr.splice(evt.oldIndex,1); arr.splice(evt.newIndex,0,m)
         setWidgets(arr); save(arr)
       }
     })
@@ -96,20 +89,15 @@ export default function Overview({ user }){
       <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
         <h2>Overview</h2>
         <div className="flex" style={{gap:8}}>
-          <button className="btn" onClick={reset}>Reset</button>
-          <button className="btn btn-primary" onClick={()=>setAdding(true)}>＋ Add widgets</button>
+          <button className="btn xs" onClick={reset}>Reset</button>
+          <button className="btn btn-primary xs" onClick={()=>setAdding(true)}>＋ Add</button>
         </div>
       </div>
 
-      {/* Overlay INSIDE the widgets area only */}
+      {/* Fine grid squares inside area only */}
       {showGrid && (
-        <div className="gridOverlay" style={{position:'absolute', inset:0}}>
-          <div className="gridOverlayInner" style={{
-            position:'absolute', inset:'48px 0 0 0',
-            display:'grid', gridTemplateColumns:'repeat(12,1fr)', gap:'12px'
-          }}>
-            {Array.from({length:12}).map((_,i)=><div key={i} className="gridCol" />)}
-          </div>
+        <div className="gridOverlay" style={{position:'absolute', inset:'38px 0 0 0', pointerEvents:'none'}}>
+          <div className="fineGrid"></div>
         </div>
       )}
 
@@ -130,12 +118,12 @@ export default function Overview({ user }){
                   <option value="outline">Outline</option>
                 </select>
                 <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
-                  <option value="comfortable">Comfortable</option>
                   <option value="compact">Compact</option>
+                  <option value="comfortable">Comfortable</option>
                 </select>
                 <button className="btn btn-ghost xs" title="Remove" onClick={()=>remove(w.id)}>✕</button>
               </div>
-              <div className="widgetBody scrollable">
+              <div className="widgetBody">
                 {def.render({ ...user }, { style:w.style, density:w.density })}
               </div>
             </div>

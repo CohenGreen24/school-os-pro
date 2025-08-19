@@ -327,3 +327,62 @@ svg.glass{ height:300px; }
 .footer{
   padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
 }
+/* Background uses theme gradient */
+:root{
+  --bg-grad: linear-gradient(135deg,#e6f3ff,#cfe9ff 40%,#bfe0ff);
+  --accent:#0ea5e9; --radius:14px; --glass-blur:10px;
+  --panel: rgba(255,255,255,.55);
+  --panel-border: rgba(0,0,0,.08);
+  --sidebar-w: 260px;
+}
+:root.dark{
+  /* keep glass darkening while preserving theme hue behind */
+  --panel: rgba(20,20,25,.55);
+  --panel-border: rgba(255,255,255,.12);
+}
+body{ background: var(--bg-grad); }
+
+/* Layout: sidebar left, content right */
+.layout{
+  display:grid; grid-template-columns: var(--sidebar-w) 1fr; gap: 12px;
+}
+
+/* Sidebar: ensure it sticks left & visible */
+.sidebarNav{
+  position: sticky; top:8px; align-self: start; height: fit-content; min-width: var(--sidebar-w);
+}
+
+/* Widgets: smaller — S=span 6, L=span 12; tighter padding */
+.widgetsGrid{
+  display:grid; gap:10px; grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+.widgetWrap{ border-radius: var(--radius); overflow:hidden; position:relative; }
+.widget-size-s{ grid-column: span 6; }
+.widget-size-l{ grid-column: span 12; }
+.widgetToolbar{ top:6px; right:6px; padding:3px 6px; }
+.widgetBody{ padding:44px 10px 10px; } /* tighter */
+
+/* Drag pulse ultra-light */
+@keyframes pulseZ {
+  0%   { transform: perspective(800px) translateZ(0) scale(1);     filter: drop-shadow(0 4px 6px rgba(0,0,0,.10)); }
+  50%  { transform: perspective(800px) translateZ(14px) scale(1.005); filter: drop-shadow(0 7px 10px rgba(0,0,0,.14)); }
+  100% { transform: perspective(800px) translateZ(0) scale(1);     filter: drop-shadow(0 4px 6px rgba(0,0,0,.10)); }
+}
+.draggingPulseSoft{ animation: pulseZ 1200ms ease-in-out infinite; }
+
+/* Fine grid overlay (small translucent squares) */
+.fineGrid{
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(to right, rgba(0,0,0,.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,0,0,.08) 1px, transparent 1px);
+  background-size: 16px 16px, 16px 16px;
+  border-radius: var(--radius);
+}
+
+/* Map building bobbing extremely light */
+@keyframes bob{
+  0% { transform: translateY(0);   filter: drop-shadow(0 2px 3px rgba(0,0,0,.10)); }
+  50%{ transform: translateY(-1px);filter: drop-shadow(0 3px 5px rgba(0,0,0,.12)); }
+  100%{transform: translateY(0);   filter: drop-shadow(0 2px 3px rgba(0,0,0,.10)); }
+}
