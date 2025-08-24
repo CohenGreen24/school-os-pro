@@ -4,7 +4,7 @@ import React from 'react'
 const ICONS = {
   overview:'🏠', calendar:'📅', assignments:'📝', lunch:'🍽️',
   library:'📚', bulletin:'📢', appointments:'💬', map:'🗺️',
-  profile:'👤', teacherpanel:'👩‍🏫', adminpanel:'🛠️'
+  profile:'👤', teacherpanel:'👩‍🏫', adminpanel:'🛠️', settings:'⚙️'
 }
 
 export default function Sidebar({ user, active, onNavigate }) {
@@ -21,6 +21,7 @@ export default function Sidebar({ user, active, onNavigate }) {
     { key:'appointments',label:'Wellbeing' },
     { key:'map',         label:'Map' },
     { key:'profile',     label:'Profile' },
+    { key:'settings',    label:'Settings' },
   ]
   const EXTRA = [
     ...(isTeacher ? [{ key:'teacherpanel', label:'Homegroup' }] : []),

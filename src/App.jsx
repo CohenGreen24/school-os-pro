@@ -18,6 +18,8 @@ import MapPanel from './components/MapPanel'
 import Lunch from './components/Lunch'
 import TeacherPanel from './components/TeacherPanel'
 import AdminPanel from './components/AdminPanel'
+import Settings from './components/Settings'
+import Numpad from './components/Numpad'
 
 // Theme
 import ThemeControls from './components/ThemeControls'
@@ -130,6 +132,7 @@ function Frame({ user, page }) {
       case 'lunch':        return <Lunch user={user} />
       case 'teacherpanel': return <TeacherPanel user={user} />
       case 'adminpanel':   return <AdminPanel user={user} />
+      case 'settings':    return <Settings />
       default:             return <Overview user={user} />
     }
   }
@@ -208,6 +211,7 @@ export default function App() {
       )}
 
       <div className="footer small">© School OS Demo</div>
+      <Numpad />
     </div>
   )
 }

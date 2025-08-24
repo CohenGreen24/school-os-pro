@@ -1,179 +1,212 @@
+// src/components/Lunch.jsx
 import React from 'react'
 import { supabase } from '../supabase'
+import './lunch.local.css' // optional; see CSS block at the end if you prefer one-file styles
 
-const randId = () =>
-  (window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))
-
-async function uploadPublicImage(file, bucket, prefix) {
-  const ext = file.name.split('.').pop()
-  const path = `${prefix}/${randId()}.${ext}`
-  const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
-  if (error) throw error
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
-  return data.publicUrl
+function Money({ n }) {
+  return <span>${Number(n || 0).toFixed(2)}</span>
 }
 
-export default function Lunch({ user, styleVariant='glass', density='comfortable' }) {
-  const isTeacher = user.role === 'teacher'
-  const [menu,setMenu] = React.useState([])
-  const [loading,setLoading] = React.useState(true)
-  const [date,setDate] = React.useState(new Date().toISOString().slice(0,10))
-  const [draft,setDraft] = React.useState({ name:'', price:'', available:true })
-  const [imageFile,setImageFile] = React.useState(null)
-  const [pickId,setPickId] = React.useState('')
-  const [qty,setQty] = React.useState(1)
-  const [msg,setMsg] = React.useState('')
+export default function Lunch({ user, styleVariant='glass' }) {
+  const isStaff = user?.role === 'teacher' || user?.role === 'admin'
+  const [menu, setMenu] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [wallet, setWallet] = React.useState(0)
+  const [query, setQuery] = React.useState('')
+  const [favorites, setFavorites] = React.useState(() => JSON.parse(localStorage.getItem(`fav_${user.id}`)||'[]'))
+  const [editing, setEditing] = React.useState(null) // item or null
+  const [qtyDraft, setQtyDraft] = React.useState({}) // {itemId: qty}
 
-  const favKey = `fav_lunch_${user.id}`
-  const orderKey = (d)=>`menu_order_${user.id}_${d}`
-  const [favs,setFavs] = React.useState(()=> new Set(JSON.parse(localStorage.getItem(favKey)||'[]')))
-  const [customOrder,setCustomOrder] = React.useState([])
+  const favKey = `fav_${user.id}`
 
-  const saveFavs = (set)=>{ const arr=[...set]; localStorage.setItem(favKey, JSON.stringify(arr)) }
-  const toggleFav = (id)=>{ const s=new Set(favs); s.has(id)?s.delete(id):s.add(id); setFavs(s); saveFavs(s) }
+  const refresh = async () => {
+    setLoading(true); setError('')
+    try {
+      const { data: walletRow } = await supabase.from('wallets').select('balance').eq('user_id', user.id).single()
+      setWallet(walletRow?.balance || 0)
 
-  const moveItem = (id,dir)=>{ 
-    const ids = customOrder.length ? [...customOrder] : (menu.map(m=>m.id))
-    const idx = ids.indexOf(id); if(idx<0) return
-    const to = Math.max(0, Math.min(ids.length-1, idx + (dir==='up'?-1:1)))
-    if(to===idx) return
-    const [it] = ids.splice(idx,1); ids.splice(to,0,it)
-    setCustomOrder(ids); localStorage.setItem(orderKey(date), JSON.stringify(ids))
-  }
-
-  const selected = React.useMemo(()=> menu.find(m=>String(m.id)===String(pickId)) || null, [menu, pickId])
-  const total = React.useMemo(()=>{ const price = selected ? Number(selected.price) : Number(draft.price||0); return (price * Math.max(1, Number(qty)||1)).toFixed(2) }, [selected, draft.price, qty])
-
-  const loadMenu = React.useCallback(async ()=>{
-    setLoading(true)
-    const { data } = await supabase.from('lunch_menu').select('*').eq('date', date).order('created_at')
-    const order = JSON.parse(localStorage.getItem(orderKey(date))||'[]')
-    setCustomOrder(order)
-    setMenu(data||[])
-    setLoading(false)
-  }, [date])
-
-  React.useEffect(()=>{ loadMenu() }, [loadMenu])
-  React.useEffect(()=>{ 
-    const ch = supabase.channel('lunch').on('postgres_changes',{event:'*',schema:'public',table:'lunch_menu'},loadMenu).subscribe()
-    return ()=>supabase.removeChannel(ch)
-  }, [loadMenu])
-
-  const addItem = async ()=>{
-    if(!draft.name || !draft.price) return
-    let image_url = null
-    if (imageFile) {
-      image_url = await uploadPublicImage(imageFile, 'lunch-images', `menu/${date}`)
-    }
-    const price = Number(draft.price)
-    await supabase.from('lunch_menu').insert({
-      date,
-      item_name: draft.name,
-      price,
-      available: draft.available,
-      image_url,
-      created_by: user.id
-    })
-    setDraft({ name:'', price:'', available:true })
-    setImageFile(null)
-    loadMenu()
-  }
-
-  const placeOrder = async ()=>{
-    setMsg('')
-    try{
-      if(!selected) { setMsg('Choose a menu item.'); return }
-      const quantity = Math.max(1, Number(qty)||1)
-      const { data, error } = await supabase.rpc('place_lunch_order', {
-        p_student_id: user.id, p_item_id: selected.id, p_quantity: quantity
-      })
-      if(error) throw error
-      setMsg('✅ Order placed. New wallet balance: $'+Number(data?.new_balance||0).toFixed(2))
-      setQty(1); setPickId('')
-      loadMenu()
-      try { window.dispatchEvent(new CustomEvent('wallet-changed')) } catch {}
-    }catch(e){
-      setMsg('⚠️ ' + (e.message || 'Order failed'))
+      const { data: items, error: e2 } = await supabase
+        .from('lunch_menu')
+        .select('id,name,price,image_url,is_active')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+      if (e2) throw e2
+      setMenu(items || [])
+    } catch (e) {
+      setError(e.message || 'Failed to load lunch menu')
+    } finally {
+      setLoading(false)
     }
   }
 
-  const cardClass = styleVariant==='solid' ? 'card solid' : styleVariant==='outline' ? 'card outline' : 'glass card'
-  const rowClass = density==='compact' ? 'row narrow' : 'row'
+  React.useEffect(()=>{ refresh() }, [])
 
-  const sortedMenu = React.useMemo(()=>{
-    const idsCustom = (customOrder && customOrder.length) ? customOrder : (menu.map(m=>m.id))
-    const idxMap = new Map(idsCustom.map((id,i)=>[id,i]))
-    return [...menu].sort((a,b)=>{
-      const fa = favs.has(a.id), fb = favs.has(b.id)
-      if(fa!==fb) return fa? -1 : 1
-      const ia = idxMap.get(a.id) ?? 9999
-      const ib = idxMap.get(b.id) ?? 9999
-      return ia-ib
+  const placeOrder = async (item) => {
+    const qty = Number(qtyDraft[item.id] || 1)
+    if (Number.isNaN(qty) || qty <= 0) return
+    const total = qty * Number(item.price || 0)
+    if (wallet < total) { alert('Insufficient wallet balance.'); return }
+
+    // Insert order (rely on lunch_orders generated total if present; also send qty for clarity)
+    const { error: e1 } = await supabase.from('lunch_orders').insert({
+      user_id: user.id, item_id: item.id, qty
     })
-  }, [menu, favs, customOrder])
+    if (e1) { alert(`Order failed: ${e1.message}`); return }
+
+    // Update wallet (simple, demo-safe update)
+    const { error: e2 } = await supabase
+      .from('wallets')
+      .update({ balance: (wallet - total) })
+      .eq('user_id', user.id)
+    if (e2) { alert(`Wallet update failed: ${e2.message}`); return }
+
+    setWallet(w => w - total)
+    setQtyDraft(s => ({ ...s, [item.id]: 1 }))
+  }
+
+  const toggleFav = (id) => {
+    const next = favorites.includes(id) ? favorites.filter(x=>x!==id) : [...favorites, id]
+    setFavorites(next)
+    localStorage.setItem(favKey, JSON.stringify(next))
+  }
+
+  const filtered = React.useMemo(()=>{
+    const q = query.trim().toLowerCase()
+    let arr = [...menu]
+    if (q) arr = arr.filter(i => i.name.toLowerCase().includes(q))
+    // pin favourites first
+    arr.sort((a,b)=>{
+      const af = favorites.includes(a.id) ? 0 : 1
+      const bf = favorites.includes(b.id) ? 0 : 1
+      return af - bf || a.name.localeCompare(b.name)
+    })
+    return arr
+  },[menu, query, favorites])
+
+  // Admin/teacher editor
+  const startEdit = (item) => setEditing(item || { id:null, name:'', price:0, image_url:'', is_active:true })
+  const saveEdit = async () => {
+    if (!editing) return
+    const payload = {
+      name: editing.name?.trim(),
+      price: Number(editing.price || 0),
+      image_url: editing.image_url || null,
+      is_active: !!editing.is_active
+    }
+    if (!payload.name) { alert('Name required'); return }
+    if (editing.id) {
+      const { error } = await supabase.from('lunch_menu').update(payload).eq('id', editing.id)
+      if (error) { alert(error.message); return }
+    } else {
+      const { error } = await supabase.from('lunch_menu').insert(payload)
+      if (error) { alert(error.message); return }
+    }
+    setEditing(null)
+    refresh()
+  }
 
   return (
-    <div className={cardClass}>
-      <div className="flex">
-        <h2>🍽️ Lunch</h2>
-        <input type="date" className="input right" style={{maxWidth:180}} value={date} onChange={e=>setDate(e.target.value)} />
+    <div className="lunchPanel">
+      <div className="flex" style={{justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+        <div className="flex" style={{gap:8, alignItems:'center'}}>
+          <h3 style={{margin:0}}>Lunch</h3>
+          <span className="badge">Wallet: <Money n={wallet}/></span>
+        </div>
+        <div className="row" style={{gridTemplateColumns:'min(280px,40vw) auto', gap:8}}>
+          <input className="input" placeholder="Search items…" value={query} onChange={e=>setQuery(e.target.value)} />
+          {isStaff && <button className="btn btn-primary xs" onClick={()=>startEdit(null)}>+ New item</button>}
+        </div>
       </div>
 
-      {isTeacher && (
-        <div className={cardClass}>
-          <b>Menu editor (for selected date)</b>
-          <div className={rowClass} style={{gridTemplateColumns:'2fr 1fr 1fr 1fr auto'}}>
-            <input className="input" placeholder="Item name" value={draft.name} onChange={e=>setDraft(s=>({...s, name:e.target.value}))} />
-            <input className="input" type="number" step="0.01" placeholder="Price" value={draft.price} onChange={e=>setDraft(s=>({...s, price:e.target.value}))} />
-            <select className="input" value={draft.available?'1':'0'} onChange={e=>setDraft(s=>({...s, available: e.target.value==='1'}))}>
-              <option value="1">Available</option><option value="0">Unavailable</option>
-            </select>
-            <input className="input" type="file" accept="image/*" onChange={e=>setImageFile(e.target.files?.[0]||null)} />
-            <button className="btn btn-primary" onClick={addItem}>Save</button>
-          </div>
-          <div className="small" style={{opacity:.7}}>Tip: images are uploaded to the <code>lunch-images</code> bucket.</div>
-        </div>
-      )}
+      {loading && <div className="small">Loading menu…</div>}
+      {error && <div className="small" style={{color:'#ef4444'}}>{error}</div>}
 
       <div className="lunchGrid">
-        {loading && <div className="small loading">Loading menu…</div>}
-        {!loading && sortedMenu.length===0 && <div className="small">No menu items for {date} yet.</div>}
-        {sortedMenu.map(m => (
-          <div key={m.id} className={`lunchCard ${cardClass}`}>
-            <div className="lunchImgWrap">
-              {m.image_url
-                ? <img src={m.image_url} alt={m.item_name} className="lunchImg" />
-                : <div className="lunchImg placeholder">No Image</div>}
-              <button className="favBtn" title="Favourite" onClick={()=>toggleFav(m.id)}>{favs.has(m.id) ? '★' : '☆'}</button>
-            </div>
-            <div className="lunchBody">
-              <div className="lunchTitle">{m.item_name}</div>
-              <div className="lunchMeta">
-                <span className="price">${Number(m.price).toFixed(2)}</span>
-                {m.available ? <span className="badge badge-green">Available</span> : <span className="badge badge-red">Sold out</span>}
+        {filtered.map(item=>{
+          const fav = favorites.includes(item.id)
+          const qty = qtyDraft[item.id] ?? 1
+          return (
+            <div className="lunchCard glass" key={item.id}>
+              <div className="lunchImgWrap">
+                {item.image_url
+                  ? <img src={item.image_url} alt={item.name} className="lunchImg" />
+                  : <div className="lunchImg placeholder">No image</div>}
+                <button className="favBtn" title="Favourite" onClick={()=>toggleFav(item.id)}>
+                  {fav ? '★' : '☆'}
+                </button>
               </div>
-              <div className="lunchActions">
-                <button className="btn btn-ghost" title="Up" onClick={()=>moveItem(m.id,'up')}>↑</button>
-                <button className="btn btn-ghost" title="Down" onClick={()=>moveItem(m.id,'down')}>↓</button>
-                <button className="btn btn-primary" onClick={()=>setPickId(m.id)} disabled={!m.available}>Select</button>
+              <div className="card" style={{display:'grid', gap:8}}>
+                <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
+                  <b style={{fontSize:'0.95rem'}}>{item.name}</b>
+                  <Money n={item.price}/>
+                </div>
+                <div className="row" style={{gridTemplateColumns:'100px auto', gap:8}}>
+                  <div className="qtyBox">
+                    <label className="small">Qty</label>
+                    <input
+                      className="input numpad-target"
+                      inputMode="numeric"
+                      value={qty}
+                      onChange={e=>setQtyDraft(s=>({ ...s, [item.id]: e.target.value }))}
+                      onFocus={(e)=> e.currentTarget.select()}
+                    />
+                  </div>
+                  <button className="btn btn-primary" onClick={()=>placeOrder(item)}>
+                    Add to order
+                  </button>
+                </div>
+                {isStaff && (
+                  <div className="flex" style={{gap:6, justifyContent:'flex-end'}}>
+                    <button className="btn xs" onClick={()=>startEdit(item)}>Edit</button>
+                    {/* quick toggle active */}
+                    <button className="btn xs" onClick={async ()=>{
+                      await supabase.from('lunch_menu').update({is_active: !item.is_active}).eq('id', item.id)
+                      refresh()
+                    }}>{item.is_active ? 'Deactivate' : 'Activate'}</button>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {user.role==='student' && (
-        <div className={cardClass}>
-          <b>Place an Order</b>
-          <div className={rowClass} style={{gridTemplateColumns:'2fr 1fr auto'}}>
-            <select className="input" value={pickId} onChange={e=>setPickId(e.target.value)}>
-              <option value="">Choose menu item…</option>
-              {sortedMenu.filter(m=>m.available).map(m => <option key={m.id} value={m.id}>{m.item_name} — ${Number(m.price).toFixed(2)}</option>)}
-            </select>
-            <input className="input" type="number" min="1" step="1" value={qty} onChange={e=>setQty(e.target.value)} />
-            <button className="btn btn-primary" onClick={placeOrder} disabled={!pickId}>Order (${total})</button>
+      {/* Editor modal */}
+      {editing && (
+        <div className="modal" onClick={(e)=>{ if(e.target===e.currentTarget) setEditing(null) }}>
+          <div className="modalBody glass card" style={{width:'min(720px,92vw)'}}>
+            <div className="flex" style={{justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+              <b>{editing.id ? 'Edit item' : 'New item'}</b>
+              <button className="btn btn-ghost" onClick={()=>setEditing(null)}>Close</button>
+            </div>
+            <div className="row" style={{gridTemplateColumns:'1fr 1fr', gap:10}}>
+              <div>
+                <label className="small">Name</label>
+                <input className="input" value={editing.name||''}
+                  onChange={e=>setEditing(s=>({...s, name:e.target.value}))}/>
+              </div>
+              <div>
+                <label className="small">Price</label>
+                <input className="input numpad-target" inputMode="numeric" value={editing.price||0}
+                  onChange={e=>setEditing(s=>({...s, price:e.target.value}))}/>
+              </div>
+              <div className="colspan">
+                <label className="small">Image URL</label>
+                <input className="input" value={editing.image_url||''}
+                  onChange={e=>setEditing(s=>({...s, image_url:e.target.value}))}/>
+              </div>
+              <div className="flex" style={{alignItems:'center', gap:8}}>
+                <input id="active" type="checkbox" checked={!!editing.is_active}
+                  onChange={e=>setEditing(s=>({...s, is_active:e.target.checked}))}/>
+                <label htmlFor="active" className="small">Active</label>
+              </div>
+            </div>
+            <div className="flex" style={{justifyContent:'flex-end', gap:8, marginTop:10}}>
+              <button className="btn" onClick={()=>setEditing(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveEdit}>Save</button>
+            </div>
           </div>
-          {msg && <div className="small" style={{marginTop:8}}>{msg}</div>}
         </div>
       )}
     </div>

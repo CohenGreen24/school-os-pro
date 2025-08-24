@@ -13,51 +13,39 @@ import Lunch from './Lunch'
 import TeacherPanel from './TeacherPanel'
 import AdminPanel from './AdminPanel'
 
-/* Optional sticky note widgets */
-function StickyShell({ color='yellow', children }){
+/* ===== Sticky Note AS a widget (not inside a card) ===== */
+function StickyNoteWidget({ w, onEdit }) {
   return (
-    <div className={`stickyNote sticky-${color}`}>
+    <div className="stickyWidget">
       <div className="stickyPin" aria-hidden>📌</div>
-      <div className="stickyPaper">{children}</div>
+      <textarea
+        className="stickyPaperArea"
+        value={w.text || ''}
+        onChange={(e)=>onEdit({ text: e.target.value })}
+        placeholder="Type a note…"
+      />
+      <div className="stickyFooter">
+        <button className="btn xs" onClick={()=>onEdit({ color: cycle(w.color) })}>Color</button>
+      </div>
     </div>
   )
 }
-function QuoteNote({ config }){
-  const text = config?.text || '“Small steps every day.”'
-  const author = config?.author || 'Unknown'
-  return (
-    <StickyShell color="yellow">
-      <div className="noteTitle">Motivation</div>
-      <div className="noteText">{text}</div>
-      <div className="small" style={{marginTop:4}}>— {author}</div>
-    </StickyShell>
-  )
-}
-function GifNote({ config }){
-  const url = config?.url || 'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif'
-  const cap = config?.caption || 'You got this!'
-  return (
-    <StickyShell color="mint">
-      <div className="noteTitle">Mood</div>
-      <img src={url} alt="gif" style={{width:'100%', borderRadius:8}} />
-      <div className="small" style={{marginTop:6, textAlign:'center'}}>{cap}</div>
-    </StickyShell>
-  )
-}
+const COLORS = ['yellow','mint','lilac','peach']
+const cycle = (c)=> COLORS[(COLORS.indexOf(c||'yellow')+1)%COLORS.length]
 
+/* ===== Registry ===== */
 const REGISTRY = {
-  calendar:     { group:'Core', label:'Calendar',     render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
-  assignments:  { group:'Core', label:'Assignments',  render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
-  wallet:       { group:'Core', label:'Wallet',       render: (u,c)=> <Wallet user={u} styleVariant={c.style} density={c.density}/> },
-  library:      { group:'Core', label:'Library',      render: (u,c)=> <Library user={u} styleVariant={c.style}/> },
-  appointments: { group:'Core', label:'Wellbeing',    render: (u,c)=> <Appointments user={u} styleVariant={c.style}/> },
-  bulletin:     { group:'Core', label:'Bulletin',     render: (u,c)=> <BulletinBoard user={u} styleVariant={c.style} density={c.density}/> },
-  map:          { group:'Core', label:'Map',          render: (u,c)=> <MapPanel styleVariant={c.style}/> },
-  lunch:        { group:'Core', label:'Lunch',        render: (u,c)=> <Lunch user={u} styleVariant={c.style} density={c.density}/> },
-  teacherpanel: { group:'Staff',label:'Teacher Panel',render: (u,c)=> <TeacherPanel user={u} styleVariant={c.style}/> },
-  adminpanel:   { group:'Staff',label:'Admin Panel',  render: (u,c)=> <AdminPanel   user={u} styleVariant={c.style}/> },
-  quotenote:    { group:'Personal', label:'Quote Note', render: (u,c)=> <QuoteNote  config={c}/> },
-  gifnote:      { group:'Personal', label:'GIF Note',   render: (u,c)=> <GifNote    config={c}/> },
+  calendar:     { label:'Calendar',     render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
+  assignments:  { label:'Assignments',  render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
+  wallet:       { label:'Wallet',       render: (u,c)=> <Wallet user={u} styleVariant={c.style} density={c.density}/> },
+  library:      { label:'Library',      render: (u,c)=> <Library user={u} styleVariant={c.style}/> },
+  appointments: { label:'Wellbeing',    render: (u,c)=> <Appointments user={u} styleVariant={c.style}/> },
+  bulletin:     { label:'Bulletin',     render: (u,c)=> <BulletinBoard user={u} styleVariant={c.style} density={c.density}/> },
+  map:          { label:'Map',          render: (u,c)=> <MapPanel styleVariant={c.style}/> },
+  lunch:        { label:'Lunch',        render: (u,c)=> <Lunch user={u} styleVariant={c.style} density={c.density}/> },
+  teacherpanel: { label:'Teacher Panel',render: (u,c)=> <TeacherPanel user={u} styleVariant={c.style}/> },
+  adminpanel:   { label:'Admin Panel',  render: (u,c)=> <AdminPanel   user={u} styleVariant={c.style}/> },
+  stickynote:   { label:'Sticky Note',  render: (u,c,edit)=> <StickyNoteWidget w={c} onEdit={(p)=>edit(p)} /> },
 }
 
 export default function Overview({ user }){
@@ -65,61 +53,41 @@ export default function Overview({ user }){
 
   const [widgets,setWidgets] = React.useState(()=>{ 
     const saved = JSON.parse(localStorage.getItem(storageKey)||'[]')
-    if (saved.length) {
-      // migrate old sizes: 's'->'small', 'l'->'long'
-      return saved.map(w=>{
-        if (w.size==='s') return {...w, size:'small'}
-        if (w.size==='l') return {...w, size:'long'}
-        return w
-      })
-    }
-    // Seed 3 rows × 3 cols area:
-    // row1: small small long
-    // row2: small small long
-    // row3: small small long
-    const seedKeys = (user.role==='student'
-      ? ['calendar','assignments','wallet','bulletin','library','lunch','appointments','map','quotenote']
+    if (saved.length) return saved
+    const seed = (user.role==='student'
+      ? ['calendar','assignments','wallet','bulletin','library','lunch','stickynote']
       : user.role==='teacher'
-        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library','map','appointments','gifnote']
-        : ['adminpanel','calendar','bulletin','lunch','assignments','library','map','appointments','quotenote']
+        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library','stickynote']
+        : ['adminpanel','calendar','bulletin','lunch','assignments','library','stickynote']
     )
-    const seed = seedKeys.slice(0,9).map((k,i)=>({
-      id:String(i+1), k,
-      size: (i%3===2 ? 'long' : 'small'), // every 3rd is long; others small
-      style:'glass',
-      density:'compact'
+    return seed.map((k,i)=>({ id:String(i+1), k,
+      size: (i%3===2 ? 'long' : 'small'),
+      style:'glass', density:'compact',
+      color: 'yellow', text: (k==='stickynote'?'':'')
     }))
-    return seed
   })
-
   const [adding,setAdding]   = React.useState(false)
   const [showGrid,setShowGrid] = React.useState(false)
   const gridRef  = React.useRef(null)
-  const areaRef  = React.useRef(null)
 
   const save = (arr)=> localStorage.setItem(storageKey, JSON.stringify(arr))
   const add  = (k, extra={})=>{
     const id=String(Date.now())
-    const base={id,k,size:'small',style:'glass',density:'compact',...extra}
+    const base={id,k,size:'small',style:'glass',density:'compact',color:'yellow',text:'',...extra}
     const arr=[...widgets, base]; setWidgets(arr); save(arr); setAdding(false)
   }
+  const edit = (id, patch)=>{ const arr=widgets.map(w=>w.id===id?{...w, ...patch}:w); setWidgets(arr); save(arr) }
   const remove = (id)=>{ const arr=widgets.filter(w=>w.id!==id); setWidgets(arr); save(arr) }
-  const setSize = (id,size)=>{ const arr=widgets.map(w=>w.id===id?{...w,size}:w); setWidgets(arr); save(arr) }
-  const setStyle = (id,style)=>{ const arr=widgets.map(w=>w.id===id?{...w,style}:w); setWidgets(arr); save(arr) }
-  const setDensity = (id,density)=>{ const arr=widgets.map(w=>w.id===id?{...w,density}:w); setWidgets(arr); save(arr) }
-  const setConfig = (id,patch)=>{ const arr=widgets.map(w=>w.id===id?{...w, ...patch}:w); setWidgets(arr); save(arr) }
-  const reset = ()=>{ localStorage.removeItem(storageKey); window.location.reload() }
+  const setSize = (id,size)=> edit(id,{ size })
+  const setStyle = (id,style)=> edit(id,{ style })
+  const setDensity = (id,density)=> edit(id,{ density })
 
-  React.useEffect(()=>{
-    const onDocDown = (e)=>{ if(areaRef.current && !areaRef.current.contains(e.target)) setShowGrid(false) }
-    document.addEventListener('pointerdown', onDocDown)
-    return ()=> document.removeEventListener('pointerdown', onDocDown)
-  },[])
-
+  // Sortable for smooth drag with subtle animation
   React.useEffect(()=>{
     if(!gridRef.current) return
     const sortable = Sortable.create(gridRef.current, {
-      animation: 120,
+      animation: 170,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
       draggable: '.widget',
       handle: '.dragHandle6',
       setData(){},
@@ -138,79 +106,87 @@ export default function Overview({ user }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgets])
 
-  const ConfigBtn = ({w})=>{
-    if (w.k==='quotenote'){
-      return (
-        <button className="btn btn-ghost xs" onClick={()=>{
-          const text = prompt('Quote text:', w.text || '“Small steps every day.”'); if(text==null) return
-          const author = prompt('Author:', w.author || 'Unknown'); setConfig(w.id, { text, author })
-        }}>✎</button>
-      )
-    }
-    if (w.k==='gifnote'){
-      return (
-        <button className="btn btn-ghost xs" onClick={()=>{
-          const url = prompt('GIF URL:', w.url || ''); if(url==null) return
-          const caption = prompt('Caption:', w.caption || 'You got this!'); setConfig(w.id, { url, caption })
-        }}>✎</button>
-      )
-    }
-    return null
-  }
-
   const REG = REGISTRY
 
   return (
-    <div className="widgetsArea" ref={areaRef}>
+    <div className="widgetsArea">
       <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
         <h2>Overview</h2>
         <div className="flex" style={{gap:8}}>
-          <button className="btn xs" onClick={reset}>Reset</button>
+          <button className="btn xs" onClick={()=>{ localStorage.removeItem(storageKey); window.location.reload() }}>Reset</button>
           <button className="btn btn-primary xs" onClick={()=>setAdding(true)}>＋ Add</button>
         </div>
       </div>
 
-      {showGrid && <div className="fineGrid" aria-hidden="true" style={{position:'absolute', inset:'0 0 0 0'}}/>}
+      {showGrid && <div className="fineGrid" aria-hidden />}
 
       <div className="widgetsGrid" ref={gridRef}>
         {widgets.map((w)=>{
           const def = REG[w.k]; if(!def) return null
+          const isNote = w.k === 'stickynote'
           return (
-            <div key={w.id} className={`widget size-${w.size}`} data-id={w.id}>
-              <div className="widgetInner glass">
-                <div className="widgetToolbar">
-                  <button className="dragHandle6" aria-label="Drag widget" title="Drag">⠿</button>
-                  <span className="small">{def.label}</span>
-                  <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
-                    <option value="small">Small</option>
-                    <option value="tall">Tall</option>
-                    <option value="long">Long</option>
-                    <option value="xl">XL</option>
-                  </select>
-                  <select className="input xs" value={w.style} onChange={e=>setStyle(w.id, e.target.value)}>
-                    <option value="glass">Glass</option>
-                    <option value="solid">Solid</option>
-                    <option value="outline">Outline</option>
-                  </select>
-                  <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
-                    <option value="compact">Compact</option>
-                    <option value="comfortable">Comfortable</option>
-                  </select>
-                  <ConfigBtn w={w}/>
-                  <button className="btn btn-ghost xs" title="Remove" onClick={()=>remove(w.id)}>✕</button>
+            <div key={w.id} className={`widget size-${w.size} ${isNote?'noteOnly':''}`} data-id={w.id}>
+              {/* if sticky note → render free-note surface; else → normal inner card */}
+              {isNote ? (
+                <div className={`noteInner note-${w.color}`}>
+                  <div className="widgetToolbar">
+                    <button className="dragHandle6" title="Drag">⠿</button>
+                    <span className="small">Sticky Note</span>
+                    <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
+                      <option value="small">Small</option>
+                      <option value="tall">Tall</option>
+                      <option value="long">Long</option>
+                      <option value="xl">XL</option>
+                    </select>
+                    <button className="btn xs" onClick={()=>edit(w.id, { color: (COLORS[(COLORS.indexOf(w.color)+1)%COLORS.length]) })}>Color</button>
+                    <button className="btn btn-ghost xs" onClick={()=>remove(w.id)}>✕</button>
+                  </div>
+                  <div className="noteCanvas">
+                    <div className="stickyWidget">
+                      <div className="stickyPin" aria-hidden>📌</div>
+                      <textarea
+                        className={`stickyPaperArea ${w.color || 'yellow'}`}
+                        value={w.text || ''}
+                        onChange={(e)=>edit(w.id, { text: e.target.value })}
+                        placeholder="Type a note…"
+                      />
+                    </div>
+                  </div>
                 </div>
-
-                <div className="widgetBody">
-                  {def.render({ ...user }, w)}
+              ) : (
+                <div className="widgetInner glass">
+                  <div className="widgetToolbar">
+                    <button className="dragHandle6" title="Drag">⠿</button>
+                    <span className="small">{def.label}</span>
+                    <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
+                      <option value="small">Small</option>
+                      <option value="tall">Tall</option>
+                      <option value="long">Long</option>
+                      <option value="xl">XL</option>
+                    </select>
+                    <select className="input xs" value={w.style} onChange={e=>setStyle(w.id, e.target.value)}>
+                      <option value="glass">Glass</option>
+                      <option value="solid">Solid</option>
+                      <option value="outline">Outline</option>
+                    </select>
+                    <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
+                      <option value="compact">Compact</option>
+                      <option value="comfortable">Comfortable</option>
+                    </select>
+                    <button className="btn btn-ghost xs" onClick={()=>remove(w.id)}>✕</button>
+                  </div>
+                  <div className="widgetBody">
+                    {def.render({ ...user }, w, (p)=>edit(w.id,p))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )
         })}
       </div>
 
       {adding && (
-        <div className="modal glass" onClick={(e)=>{ if(e.target===e.currentTarget) setAdding(false) }}>
+        <div className="modal" onClick={(e)=>{ if(e.target===e.currentTarget) setAdding(false) }}>
           <div className="modalBody glass card">
             <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
               <b>Add widgets</b>
@@ -219,7 +195,7 @@ export default function Overview({ user }){
 
             <h4 style={{margin:'10px 0 6px'}}>Core</h4>
             <div className="widgetPicker">
-              {Object.entries(REG).filter(([k,v])=>v.group==='Core').map(([k,def])=>(
+              {Object.entries(REG).filter(([k])=>!['stickynote','teacherpanel','adminpanel'].includes(k)).map(([k,def])=>(
                 <button key={k} className="glass card pickBtn" onClick={()=>add(k)}>{def.label}</button>
               ))}
             </div>
@@ -228,20 +204,17 @@ export default function Overview({ user }){
               <>
                 <h4 style={{margin:'14px 0 6px'}}>Staff</h4>
                 <div className="widgetPicker">
-                  {Object.entries(REG).filter(([k,v])=>v.group==='Staff').map(([k,def])=>(
+                  {Object.entries(REG).filter(([k])=>['teacherpanel','adminpanel'].includes(k)).map(([k,def])=>(
                     <button key={k} className="glass card pickBtn" onClick={()=>add(k)}>{def.label}</button>
                   ))}
                 </div>
               </>
             )}
 
-            <h4 style={{margin:'14px 0 6px'}}>Personalisation</h4>
+            <h4 style={{margin:'14px 0 6px'}}>Personal</h4>
             <div className="widgetPicker">
-              <button className="glass card pickBtn" onClick={()=>add('quotenote',{ text:'“Small steps every day.”', author:'Unknown' })}>
-                Quote Note
-              </button>
-              <button className="glass card pickBtn" onClick={()=>add('gifnote',{ url:'', caption:'You got this!' })}>
-                GIF Note
+              <button className="glass card pickBtn" onClick={()=>add('stickynote',{ text:'', color:'yellow' })}>
+                Sticky Note
               </button>
             </div>
           </div>
