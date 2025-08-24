@@ -1,20 +1,19 @@
 /* =========================================================
-   School OS — Polished UI
+   School OS — Clean (No Widgets)
    - Glassmorphic panels, rounded corners
-   - Compact sidebar (icon + text), no double icons
-   - Widgets: compact grid, fine drag visuals
-   - Lunch: iPad-friendly split scroll, 4×4 grid, tidy cart
-   - Themes + dark mode that adapts palette
+   - Sidebar (icon + text)
+   - Overview weekly timetable (Mon–Fri) with doubles
+   - Lunch iPad split scroll (4×4 grid + compact cart)
+   - Themes + dark mode
    ========================================================= */
 
 /* ---------- Base tokens ---------- */
 :root{
-  /* Default (Classic / Breeze) */
   --bg-grad: linear-gradient(135deg,#eaf5ff,#d8ecff 45%,#c9e4ff);
   --panel: rgba(255,255,255,.55);
   --panel-border: rgba(0,0,0,.08);
-  --accent:#0ea5e9;            /* buttons/links */
-  --widget-tint:#eaf5ff;       /* keeps widgets on-brand */
+  --accent:#0ea5e9;
+  --widget-tint:#eaf5ff;
 
   --text: #0f172a;
   --muted:#64748b;
@@ -23,76 +22,29 @@
   --glass-blur:10px;
 
   --touch: 44px;
-  --sidebar-w: 200px;          /* one icon + label */
+  --sidebar-w: 200px;
   --content-max: 1680px;
 
   --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent) inset;
 }
-
 :root.dark{
-  --text: #e5e7eb;
-  --muted:#94a3b8;
-  --panel: rgba(22,24,28,.55);
-  --panel-border: rgba(255,255,255,.12);
+  --text: #e5e7eb; --muted:#94a3b8;
+  --panel: rgba(22,24,28,.55); --panel-border: rgba(255,255,255,.12);
   --bg-grad: linear-gradient(135deg,#0e1726,#0a1320 48%,#0b1524);
   --widget-tint:#152238;
 }
 
-/* ---------- Theme palettes (light + dark adjust automatically) ---------- */
-/* Breeze (default, modern sky-blue vibe) */
-.theme-breeze{
-  --bg-grad: linear-gradient(135deg,#eaf5ff,#d8ecff 45%,#c9e4ff);
-  --accent:#0ea5e9;
-  --widget-tint:#eaf5ff;
-}
-:root.dark.theme-breeze{
-  --bg-grad: linear-gradient(135deg, #0b1722, #0b1c2a 50%, #0b2233);
-  --widget-tint:#122133;
-}
-
-/* Mint */
-.theme-mint{
-  --bg-grad: linear-gradient(135deg,#e8fff6,#d7f8ee 45%,#c9f1e6);
-  --accent:#10b981;
-  --widget-tint:#e8fff6;
-}
-:root.dark.theme-mint{
-  --bg-grad: linear-gradient(135deg,#081a14,#0b2019 45%,#0e2720);
-  --widget-tint:#0f211a;
-}
-
-/* Sunset */
-.theme-sunset{
-  --bg-grad: linear-gradient(135deg,#ffe9e2,#ffd9c8 45%,#ffd0b8);
-  --accent:#f97316;
-  --widget-tint:#fff1eb;
-}
-:root.dark.theme-sunset{
-  --bg-grad: linear-gradient(135deg,#23120c,#2a160f 45%,#2f1a12);
-  --widget-tint:#20130e;
-}
-
-/* Grape */
-.theme-grape{
-  --bg-grad: linear-gradient(135deg,#f3e8ff,#e9d5ff 45%,#e2c4ff);
-  --accent:#8b5cf6;
-  --widget-tint:#f5ecff;
-}
-:root.dark.theme-grape{
-  --bg-grad: linear-gradient(135deg,#180d26,#1d1030 45%,#22133a);
-  --widget-tint:#1b1230;
-}
-
-/* Slate */
-.theme-slate{
-  --bg-grad: linear-gradient(135deg,#eef2f7,#e6ecf3 45%,#dde5ee);
-  --accent:#64748b;
-  --widget-tint:#eef2f7;
-}
-:root.dark.theme-slate{
-  --bg-grad: linear-gradient(135deg,#0e1116,#0f1319 45%,#121720);
-  --widget-tint:#12161c;
-}
+/* Themes (you can toggle a .theme-xxx class on <html> if desired) */
+.theme-breeze{ --bg-grad: linear-gradient(135deg,#eaf5ff,#d8ecff 45%,#c9e4ff); --accent:#0ea5e9; --widget-tint:#eaf5ff; }
+:root.dark.theme-breeze{ --bg-grad: linear-gradient(135deg, #0b1722, #0b1c2a 50%, #0b2233); --widget-tint:#122133; }
+.theme-mint{ --bg-grad: linear-gradient(135deg,#e8fff6,#d7f8ee 45%,#c9f1e6); --accent:#10b981; --widget-tint:#e8fff6;}
+:root.dark.theme-mint{ --bg-grad: linear-gradient(135deg,#081a14,#0b2019 45%,#0e2720); --widget-tint:#0f211a; }
+.theme-sunset{ --bg-grad: linear-gradient(135deg,#ffe9e2,#ffd9c8 45%,#ffd0b8); --accent:#f97316; --widget-tint:#fff1eb;}
+:root.dark.theme-sunset{ --bg-grad: linear-gradient(135deg,#23120c,#2a160f 45%,#2f1a12); --widget-tint:#20130e; }
+.theme-grape{ --bg-grad: linear-gradient(135deg,#f3e8ff,#e9d5ff 45%,#e2c4ff); --accent:#8b5cf6; --widget-tint:#f5ecff; }
+:root.dark.theme-grape{ --bg-grad: linear-gradient(135deg,#180d26,#1d1030 45%,#22133a); --widget-tint:#1b1230; }
+.theme-slate{ --bg-grad: linear-gradient(135deg,#eef2f7,#e6ecf3 45%,#dde5ee); --accent:#64748b; --widget-tint:#eef2f7; }
+:root.dark.theme-slate{ --bg-grad: linear-gradient(135deg,#0e1116,#0f1319 45%,#121720); --widget-tint:#12161c; }
 
 /* ---------- Resets & basics ---------- */
 *{ box-sizing: border-box; }
@@ -101,35 +53,19 @@ html{ -webkit-text-size-adjust: 100%; }
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-  color: var(--text);
-  background: var(--bg-grad);
+  color: var(--text); background: var(--bg-grad);
 }
 a{ color: var(--accent); text-decoration:none; }
 img{ max-width:100%; display:block; }
 small,.small{ color: var(--muted); font-size:.86rem; }
 
 /* ---------- Layout ---------- */
-.container{
-  max-width: var(--content-max);
-  margin:0 auto;
-  padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px);
-}
-.header{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:10px; padding: 8px 12px; border-radius: var(--radius);
-}
+.container{ max-width: var(--content-max); margin:0 auto; padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px); }
+.header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding: 8px 12px; border-radius: var(--radius); }
 .headerLeft{ display:flex; align-items:center; gap:10px; }
-.headerRight{
-  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-  min-width: 320px;
-}
+.headerRight{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width: 320px; }
 .brand{ font-weight: 800; letter-spacing:.2px; }
-
-.layout{
-  display:grid;
-  grid-template-columns: var(--sidebar-w) minmax(0,1fr);
-  gap: 12px;
-}
+.layout{ display:grid; grid-template-columns: var(--sidebar-w) minmax(0,1fr); gap: 12px; }
 .content{ overflow: hidden; }
 
 /* ---------- Glass ---------- */
@@ -147,37 +83,24 @@ small,.small{ color: var(--muted); font-size:.86rem; }
   appearance:none; cursor:pointer; user-select:none;
   border:1px solid var(--panel-border);
   background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
-  color: var(--text);
-  min-height: var(--touch);
+  color: var(--text); min-height: var(--touch);
   padding: 6px 10px; border-radius: 12px;
 }
-:root.dark .btn{
-  background: color-mix(in srgb, var(--widget-tint) 28%, black 72%);
-}
+:root.dark .btn{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
 .btn:hover{ filter: brightness(1.03); }
 .btn:active{ transform: translateY(1px); }
 .btn:focus-visible{ outline:none; box-shadow: var(--focus-ring); }
 .btn.xs{ min-height: 30px; padding: 4px 8px; border-radius: 10px; }
-
-.btn.btn-primary{
-  background: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 55%, black 0%);
-  color:#fff;
-}
-
+.btn.btn-primary{ background: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, black 0%); color:#fff; }
 .input{
-  width:100%; min-height: var(--touch);
-  padding: 6px 9px; border-radius: 12px;
+  width:100%; min-height: var(--touch); padding: 6px 9px; border-radius: 12px;
   border:1px solid var(--panel-border);
   background: color-mix(in srgb, var(--widget-tint) 65%, white 35%);
   color: var(--text);
 }
-:root.dark .input{
-  background: color-mix(in srgb, var(--widget-tint) 26%, black 74%);
-}
+:root.dark .input{ background: color-mix(in srgb, var(--widget-tint) 26%, black 74%); }
 .input.xs{ min-height: 30px; padding: 4px 8px; }
 label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
-
 .badge{
   display:inline-flex; align-items:center; gap:6px;
   padding: 3px 8px; border-radius: 999px; font-size:.78rem;
@@ -185,36 +108,27 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
   border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
   color: var(--text);
 }
+.pill{ border-radius: 999px; padding:4px 8px; }
 
-/* ---------- Sidebar (icon + text, one icon total) ---------- */
+/* ---------- Sidebar (icon + text) ---------- */
 .sidebarNav{
   position: sticky; top:8px; align-self:start; height:fit-content;
   width: var(--sidebar-w); overflow: clip;
   padding: 8px; display:flex; flex-direction:column; gap:8px;
 }
-.sidebarNav .brand{
-  padding: 8px; border-radius: 12px;
-  display:flex; align-items:center; justify-content:space-between;
-}
+.sidebarNav .brand{ padding: 8px; border-radius: 12px; display:flex; align-items:center; justify-content:space-between; }
 .sidebarNav .brand .title{ font-weight:700; font-size:.98rem; }
 .sidebarNav .brand .subtitle{ opacity:.78; font-size:.78rem; }
-
 .sidebarNav .nav{ display:flex; flex-direction:column; gap:6px; }
 .sidebarNav .nav .navItem{
-  display:grid;
-  grid-template-columns: 26px 1fr; /* icon | label */
-  align-items:center; gap:8px;
-  padding: 9px; min-height: 40px;
-  border-radius: 12px; text-align:left; user-select:none;
-  cursor:pointer;
+  display:grid; grid-template-columns: 26px 1fr; /* icon | label */
+  align-items:center; gap:8px; padding: 9px; min-height: 40px;
+  border-radius: 12px; text-align:left; user-select:none; cursor:pointer;
   border:1px solid var(--panel-border);
   background: color-mix(in srgb, var(--widget-tint) 58%, white 42%);
   color: var(--text);
 }
-:root.dark .sidebarNav .nav .navItem{
-  background: color-mix(in srgb, var(--widget-tint) 24%, black 76%);
-  border-color: rgba(255,255,255,.12);
-}
+:root.dark .sidebarNav .nav .navItem{ background: color-mix(in srgb, var(--widget-tint) 24%, black 76%); border-color: rgba(255,255,255,.12); }
 .sidebarNav .nav .navItem.active{
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent) inset;
@@ -222,122 +136,73 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 .navIcon{ font-size: 1.18rem; line-height:1; text-align:center; }
 .navLabel{ font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-/* ---------- Widgets (compact, smooth) ---------- */
-.widgetsArea{ position:relative; overflow:hidden; }
-.widgetsGrid{
-  /* 3 columns x 2 rows by default “one screen” */
-  display:grid; gap:8px;
-  grid-template-columns: repeat(3, minmax(0,1fr));
-  grid-auto-rows: 150px;           /* compact row height */
-  padding: 6px;
-}
-.widgetWrap{
-  border-radius: var(--radius); overflow:hidden; position:relative;
-  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
-  border:1px solid var(--panel-border);
-  min-height: 150px;
-}
-:root.dark .widgetWrap{
-  background: color-mix(in srgb, var(--widget-tint) 26%, black 74%);
-  border-color: rgba(255,255,255,.12);
-}
+/* ---------- Profile ---------- */
+.avatar{ width:56px; height:56px; border-radius:50%; object-fit:cover; border:2px solid var(--panel-border); }
+.avatar.placeholder{ display:flex; align-items:center; justify-content:center; font-size:1.2rem; background: rgba(0,0,0,.05); }
 
-/* Sizes: small (1x1), large (2x1), tall (1x2), xl (2x2) */
-.widget-size-s{ grid-column: span 1; grid-row: span 1; }
-.widget-size-l{ grid-column: span 2; grid-row: span 1; }
-.widget-size-t{ grid-column: span 1; grid-row: span 2; }
-.widget-size-xl{ grid-column: span 2; grid-row: span 2; }
-
-/* Toolbar & handle */
-.widgetToolbar{
-  position:absolute; top:6px; right:6px; z-index:20;
-  display:flex; gap:6px; align-items:center; padding:3px 6px;
-  border-radius:12px; backdrop-filter: blur(8px);
-  background: rgba(255,255,255,.6); border:1px solid var(--panel-border);
-  color: var(--text);
+/* ---------- Overview (Weekly timetable) ---------- */
+.overviewPanel{ padding: 10px; }
+.overviewHeader{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;
 }
-:root.dark .widgetToolbar{ background: rgba(20,20,25,.55); border-color: rgba(255,255,255,.12); }
-.dragHandle6{
-  appearance:none; border:1px dashed var(--panel-border);
-  background: transparent; color: var(--muted);
-  border-radius: 8px; padding: 2px 6px; cursor:grab; font-weight:700;
-}
-.dragHandle6:active{ cursor:grabbing; }
-.widgetBody{ padding: 24px 10px 10px; }
+.ohLeft{ display:flex; align-items:center; gap:10px; }
+.ohTitle{ margin:0; }
+.ohShortcuts{ display:flex; flex-wrap:wrap; gap:6px; }
+.ohRight{ display:flex; align-items:center; gap:10px; }
 
-/* Fine grid overlay (during drag) — inside widgets area only */
-.fineGrid{
-  position:absolute; inset:0; border-radius: 12px;
-  background-image:
-    linear-gradient(to right, rgba(0,0,0,.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0,0,0,.06) 1px, transparent 1px);
-  background-size: 12px 12px, 12px 12px;
-  pointer-events:none;
+.weekShell{
+  display:grid; grid-template-columns: 220px repeat(5, 1fr);
+  gap:10px; align-items:start;
 }
-
-/* Ultra-light drag pulse only for the chosen widget */
-@keyframes pulseZ {
-  0%   { transform: perspective(800px) translateZ(0) scale(1); }
-  50%  { transform: perspective(800px) translateZ(8px) scale(1.002); }
-  100% { transform: perspective(800px) translateZ(0) scale(1); }
+.timeCol{ padding: 10px; }
+.dayCol{ padding: 10px; }
+.timeHead, .dayHead{ font-weight:800; margin-bottom:8px; }
+.timeCell{
+  padding:8px; border-radius:12px; border:1px dashed var(--panel-border);
+  margin-bottom:6px; background: color-mix(in srgb, var(--widget-tint) 55%, white 45%);
 }
-.draggingPulseSoft{ animation: pulseZ 1300ms ease-in-out infinite; }
+.timeRange{ font-weight:700; }
+.timeLabel{ font-size:.86rem; color: var(--muted); }
 
-/* General list look for items inside widgets */
-.list{ display:flex; flex-direction:column; gap:8px; }
-.list .item{
-  padding:8px; border-radius:12px; border:1px solid var(--panel-border);
+.dayCol{
+  display:grid; grid-template-rows: auto repeat(9, 1fr); gap:6px;
+}
+.slotCell{
+  border:1px solid var(--panel-border); border-radius:12px; padding:8px;
   background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
-  color: var(--text);
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
 }
-:root.dark .list .item{
-  background: color-mix(in srgb, var(--widget-tint) 28%, black 72%);
-  border-color: rgba(255,255,255,.12);
+:root.dark .slotCell{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
+.slotCell.recess, .slotCell.lunch{ opacity:.95; }
+.slotMain{ min-width:0; }
+.slotTitle{ font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.slotMeta{ display:flex; align-items:center; gap:8px; color: var(--muted); }
+.slotTimes{ font-size:.86rem; color: var(--muted); white-space:nowrap; }
+.span2{ grid-row: span 2; }
+.strip{
+  display:flex; flex-direction:column; gap:6px;
+}
+.stripList{
+  display:flex; flex-wrap:wrap; gap:6px;
+}
+.chip{
+  padding:6px 10px; border-radius:999px; border:1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
 }
 
-/* ---------- Sticky notes (as movable widgets) ---------- */
-.stickyNote{ position:relative; }
-.stickyPin{ position:absolute; top:-6px; left:10px; transform: rotate(-12deg);
-  filter: drop-shadow(0 2px 2px rgba(0,0,0,.2)); }
-.stickyPaper{
-  padding:10px; border-radius: 10px;
-  box-shadow: 0 8px 16px rgba(0,0,0,.08);
-  transform: rotate(-1.2deg);
-}
-.sticky-yellow .stickyPaper{ background: #fff7ad; color:#3a2f00; }
-.sticky-mint   .stickyPaper{ background: #c9ffe0; color:#083a2a; }
-.noteTitle{ font-weight:700; margin-bottom:4px; }
-.noteText{ font-size:.98rem; line-height:1.25; }
-
-/* ---------- Lunch (iPad split scroll, 4x4) ---------- */
+/* ---------- Lunch (iPad split scroll, 4×4) ---------- */
 .lunchShell{
-  display:grid;
-  grid-template-columns: 3fr 1fr;
+  display:grid; grid-template-columns: 3fr 1fr;
   gap:12px; padding:10px; border-radius:12px;
-  height: calc(100vh - 220px);  /* reliable viewport area for iPad */
-  min-height: 520px;
-  overflow: hidden;              /* left/right scroll inside */
+  height: calc(100vh - 220px); min-height: 520px; overflow: hidden;
 }
-.lunchLeft{
-  min-width:0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  padding-right: 2px;
-}
-.lunchRight{
-  display:flex; flex-direction:column; min-width:0; overflow: hidden;
-}
-
+.lunchLeft{ min-width:0; overflow-y:auto; -webkit-overflow-scrolling: touch; padding-right:2px; }
+.lunchRight{ display:flex; flex-direction:column; min-width:0; overflow:hidden; }
 .lunchGridFixed{
-  display:grid;
-  grid-template-columns: repeat(4, minmax(0,1fr));
-  grid-auto-rows: 155px;         /* compact rows */
-  gap:8px; align-content:start;
+  display:grid; grid-template-columns: repeat(4, minmax(0,1fr));
+  grid-auto-rows: 155px; gap:8px; align-content:start;
 }
-
-/* Compact menu card */
-.lunchCardCompact{
-  display:grid; grid-template-rows: 1fr auto auto;
-  gap:6px; border-radius:12px; padding:8px;
-}
+.lunchCardCompact{ display:grid; grid-template-rows: 1fr auto auto; gap:6px; border-radius:12px; padding:8px; }
 .compactImgWrap{ width:100%; height:96px; overflow:hidden; border-radius:10px; }
 .compactImg{ width:100%; height:100%; object-fit:cover; display:block; }
 .compactMeta{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
@@ -345,30 +210,19 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 .compactPrice{ font-size:.9rem; }
 .compactControls{ display:flex; align-items:center; justify-content:center; gap:8px; }
 .compactControls .qty{ width:24px; text-align:center; }
-
-/* Cart — compact list + own scroll */
 .cartHeader{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
 .cartTitle{ font-weight:700; margin-bottom:4px; }
-.cartList{
-  overflow-y:auto; -webkit-overflow-scrolling: touch;
-  flex:1; display:flex; flex-direction:column; gap:4px; padding-right:2px; min-height: 0;
-}
+.cartList{ overflow-y:auto; -webkit-overflow-scrolling: touch; flex:1; display:flex; flex-direction:column; gap:4px; padding-right:2px; min-height: 0; }
 .cartLineItem{
   display:flex; align-items:center; justify-content:space-between;
-  padding:6px 8px; border-radius:10px;
-  border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
-  font-size:.95rem;
+  padding:6px 8px; border-radius:10px; border:1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%); font-size:.95rem;
 }
 :root.dark .cartLineItem{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
 .cartLineBtns{ display:flex; gap:6px; margin-left:8px; }
 .cartFooter{ display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:8px; }
 
-/* ---------- Profile ---------- */
-.avatarBox{ display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
-.avatar{ width:100px; height:100px; border-radius:50%; object-fit:cover; border:2px solid var(--panel-border); }
-
-/* ---------- Map — light bob on selected building ---------- */
+/* ---------- Map (subtle building bob) ---------- */
 .building{ transition: transform .2s ease, filter .2s ease; transform-origin: 50% 50%; }
 @keyframes bob{ 0%{transform:translateY(0)} 50%{transform:translateY(-0.5px)} 100%{transform:translateY(0)} }
 .building.selected{ animation: bob 1200ms ease-in-out infinite; }
@@ -384,25 +238,43 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 
 /* ---------- Utility ---------- */
 .flex{ display:flex; align-items:center; gap:8px; }
-.pill{ border-radius: 999px; padding:4px 8px; }
 .hidden{ display:none !important; }
 
-/* ---------- Responsive tweaks ---------- */
+/* ---------- Responsive ---------- */
 @media (max-width: 1200px){
   :root{ --sidebar-w: 180px; }
 }
-
 @media (max-width: 980px){
   .layout{ grid-template-columns: 1fr; }
   .sidebarNav{ position:relative; width:auto; }
   .lunchShell{ grid-template-columns: 1fr; height: auto; min-height: 600px; }
   .lunchRight{ margin-top: 8px; }
-  .widgetsGrid{ grid-template-columns: repeat(2, 1fr); }
-  .widget-size-l, .widget-size-xl{ grid-column: span 2; }
+}
+@media (max-width: 640px){
+  .lunchGridFixed{ grid-template-columns: repeat(2, 1fr); grid-auto-rows: 160px; }
+}
+/* --- Collapsible sidebar refinements --- */
+.sidebarNav.is-collapsed .brand {
+  justify-content: center;
+  padding: 8px;
+}
+.sidebarNav.is-collapsed .brand .title,
+.sidebarNav.is-collapsed .brand .subtitle {
+  display: none;
 }
 
-@media (max-width: 640px){
-  .widgetsGrid{ grid-template-columns: 1fr; }
-  .widget-size-l, .widget-size-xl, .widget-size-t{ grid-column: span 1; }
-  .lunchGridFixed{ grid-template-columns: repeat(2, 1fr); grid-auto-rows: 160px; }
+.sidebarNav.is-collapsed .nav .navItem {
+  grid-template-columns: 1fr; /* icon only */
+  justify-items: center;
+  padding: 10px 8px;
+}
+.sidebarNav.is-collapsed .nav .navItem .navLabel { display: none; }
+.sidebarNav.is-collapsed .nav .navItem .navIcon { font-size: 1.25rem; }
+
+@media (max-width: 980px){
+  /* Auto-collapse on small screens (optional – remove if you don't want this) */
+  :root { --sidebar-w: 64px; }
+  .sidebarNav:not(.is-collapsed) {
+    /* If you want it forced collapsed on small screens, add class: is-collapsed */
+  }
 }

@@ -1,11 +1,9 @@
-// src/App.jsx (FULL REPLACEMENT)
+// src/App.jsx
 import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 
-// Layout & navigation
+// Pages
 import Sidebar from './components/Sidebar'
-
-// Pages / panels
 import Overview from './components/Overview'
 import Profile from './components/Profile'
 import Calendar from './components/Calendar'
@@ -16,54 +14,38 @@ import Appointments from './components/Appointments'
 import BulletinBoard from './components/BulletinBoard'
 import MapPanel from './components/MapPanel'
 import Lunch from './components/Lunch'
-import TeacherPanel from './components/TeacherPanel'
-import AdminPanel from './components/AdminPanel'
-import Settings from './components/Settings'
-import Numpad from './components/Numpad'
 
-// Theme
-import ThemeControls from './components/ThemeControls'
-import { applyTheme } from './theme'
+// If you have applyTheme/theme controls, they are no longer required.
+// We do theme switching by toggling classes on <html> (document.documentElement).
 
-/* -------------------- Helpers -------------------- */
-function getThemePrefs(uid = 'anon') {
-  const key = `theme_${uid}`
-  const mode = localStorage.getItem(`${key}_mode`) || 'light'
-  const theme = localStorage.getItem(`${key}_theme`) || 'cirrus'
-  return { key, mode, theme }
+/* ------------------------- Theme Handling ------------------------- */
+const THEMES = [
+  { key: 'theme-breeze', label: 'Breeze' },   // modern sky-blue
+  { key: 'theme-mint',   label: 'Mint'   },
+  { key: 'theme-sunset', label: 'Sunset' },
+  { key: 'theme-grape',  label: 'Grape'  },
+  { key: 'theme-slate',  label: 'Slate'  },
+]
+
+function useTheme() {
+  const [mode, setMode] = useState(localStorage.getItem('mode') || 'light') // 'light' | 'dark'
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'theme-breeze')
+
+  useEffect(() => {
+    const root = document.documentElement
+    // mode
+    root.classList.toggle('dark', mode === 'dark')
+    localStorage.setItem('mode', mode)
+    // theme classes (remove old, add new)
+    THEMES.forEach(t => root.classList.remove(t.key))
+    root.classList.add(theme)
+    localStorage.setItem('theme', theme)
+  }, [mode, theme])
+
+  return { mode, setMode, theme, setTheme }
 }
 
-/* Light/Dark toggle button (no props; always respects current user’s theme prefs) */
-function ToggleLightDark({ user }) {
-  const uid = user?.id || 'anon'
-  const { key } = useMemo(() => getThemePrefs(uid), [uid])
-
-  const handleToggle = () => {
-    const currentMode = localStorage.getItem(`${key}_mode`) || 'light'
-    const nextMode = currentMode === 'dark' ? 'light' : 'dark'
-    localStorage.setItem(`${key}_mode`, nextMode)
-
-    // keep <html> in sync
-    document.documentElement.classList.toggle('dark', nextMode === 'dark')
-
-    // re-apply theme with new mode
-    const theme = localStorage.getItem(`${key}_theme`) || 'cirrus'
-    applyTheme(theme, nextMode)
-  }
-
-  const label = (() => {
-    const currentMode = localStorage.getItem(`${key}_mode`) || 'light'
-    return currentMode === 'dark' ? '🌙 Dark' : '🌞 Light'
-  })()
-
-  return (
-    <button className="btn xs" onClick={handleToggle} title="Toggle light/dark">
-      {label}
-    </button>
-  )
-}
-
-/* Simple code login: 6-digit (students) or 8-digit (staff/admin) */
+/* ------------------------- Login ------------------------- */
 function Login({ onLogin }) {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
@@ -78,117 +60,134 @@ function Login({ onLogin }) {
         .from('users')
         .select('*')
         .eq('code', code.trim())
-        .single()
-      if (error || !data) throw error || new Error('Invalid ID')
+        .maybeSingle()
+
+      if (error || !data) throw error || new Error('Not found')
       onLogin(data)
-    } catch (err) {
-      setError('Invalid code. Try a demo: student 100001 • teacher 20000001 • admin 90000001.')
+    } catch (e) {
+      setError('Invalid code. Try a valid student (6-digit) or teacher/admin/wellbeing (8-digit) ID.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="glass card" style={{ maxWidth: 480, margin: '40px auto' }}>
-      <h2 style={{ marginBottom: 8 }}>Sign in</h2>
-      <p className="small" style={{ marginTop: 0, opacity: 0.85 }}>
-        Enter your 6-digit student ID or 8-digit staff/admin ID.
+    <div className="glass card" style={{ maxWidth: 520, margin: '40px auto' }}>
+      <h2 style={{ margin: '4px 0 8px' }}>Sign in</h2>
+      <p className="small" style={{ marginTop: 0, opacity: .8 }}>
+        Enter your 6-digit student ID or 8-digit teacher/admin/wellbeing ID.
       </p>
-      <form onSubmit={submit} className="row" style={{ gridTemplateColumns: '1fr auto' }}>
+      <form onSubmit={submit} className="flex" style={{ gap: 8 }}>
         <input
           className="input"
-          inputMode="numeric"
           placeholder="e.g. 100001"
           value={code}
           onChange={(e) => setCode(e.target.value)}
+          style={{ flex: 1 }}
         />
         <button className="btn btn-primary" disabled={loading}>
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
-      {error && (
-        <div className="small" style={{ color: '#ef4444', marginTop: 8 }}>{error}</div>
-      )}
+      {error && <div className="small" style={{ color: '#ef4444', marginTop: 8 }}>{error}</div>}
     </div>
   )
 }
 
-/* Main frame swaps pages based on role + current tab */
-function Frame({ user, page }) {
-  const role = user?.role
+/* ------------------------- Pages ------------------------- */
+const PAGES = [
+  { key: 'overview',    icon: '🏠', label: 'Overview' },
+  { key: 'profile',     icon: '👤', label: 'Profile' },
+  { key: 'calendar',    icon: '📅', label: 'Calendar' },
+  { key: 'assignments', icon: '✅', label: 'Assignments' },
+  { key: 'wallet',      icon: '💳', label: 'Wallet' },
+  { key: 'library',     icon: '📚', label: 'Library' },
+  { key: 'appointments',icon: '🧑‍⚕️', label: 'Wellbeing' },
+  { key: 'bulletin',    icon: '📣', label: 'Bulletin' },
+  { key: 'map',         icon: '🗺️', label: 'Map' },
+  { key: 'lunch',       icon: '🍽️', label: 'Lunch' },
+]
 
-  // available to everyone unless hidden by role switch below
-  const renderCommon = (key) => {
-    switch (key) {
-      case 'overview':     return <Overview user={user} />
-      case 'profile':      return <Profile user={user} />
-      case 'calendar':     return <Calendar user={user} />
-      case 'assignments':  return <Assignments user={user} />
-      case 'wallet':       return <Wallet user={user} />
-      case 'library':      return <Library user={user} />
-      case 'appointments': return <Appointments user={user} />
-      case 'bulletin':     return <BulletinBoard user={user} />
-      case 'map':          return <MapPanel />
-      case 'lunch':        return <Lunch user={user} />
-      case 'teacherpanel': return <TeacherPanel user={user} />
-      case 'adminpanel':   return <AdminPanel user={user} />
-      case 'settings':    return <Settings />
-      default:             return <Overview user={user} />
-    }
-  }
+/* ------------------------- Frame (router-ish) ------------------------- */
+function Frame({ user, page, setPage }) {
+  // onGo allows Overview to trigger navigation (e.g., to lunch/map/assignments)
+  const onGo = (dest) => setPage(dest)
 
-  // Role-based gating (teachers & admins can see the extra panels)
-  if (role === 'teacher') {
-    return <div className="content">{renderCommon(page)}</div>
-  }
-  if (role === 'admin') {
-    return <div className="content">{renderCommon(page)}</div>
-  }
-  if (role === 'wellbeing') {
-    // wellbeing staff don’t usually need Assignments/Wallet, but keep common pages
-    return <div className="content">{renderCommon(page)}</div>
-  }
-  // students
-  return <div className="content">{renderCommon(page)}</div>
+  if (!user) return null
+
+  // teacher/admin/wellbeing can still use same pages; each page can gate features by role internally
+  return (
+    <div className="content">
+      {page === 'overview'    && <Overview user={user} onGo={onGo} />}
+      {page === 'profile'     && <Profile user={user} />}
+      {page === 'calendar'    && <Calendar user={user} />}
+      {page === 'assignments' && <Assignments user={user} admin={user.role !== 'student'} />}
+      {page === 'wallet'      && <Wallet user={user} admin={user.role !== 'student'} />}
+      {page === 'library'     && <Library user={user} />}
+      {page === 'appointments'&& <Appointments user={user} admin={user.role !== 'student'} />}
+      {page === 'bulletin'    && <BulletinBoard user={user} />}
+      {page === 'map'         && <MapPanel user={user} />}
+      {page === 'lunch'       && <Lunch user={user} />}
+    </div>
+  )
 }
 
+/* ------------------------- App Shell ------------------------- */
 export default function App() {
   const [user, setUser] = useState(null)
   const [page, setPage] = useState('overview')
+  const { mode, setMode, theme, setTheme } = useTheme()
 
-  // Apply theme (background gradient + glass tint) on first load and on user change
+  // Persist last visited page per user (optional nicety)
   useEffect(() => {
-    const uid = user?.id || 'anon'
-    const { key, mode, theme } = getThemePrefs(uid)
-    // store back to ensure keys exist
-    localStorage.setItem(`${key}_mode`, mode)
-    localStorage.setItem(`${key}_theme`, theme)
-    document.documentElement.classList.toggle('dark', mode === 'dark')
-    applyTheme(theme, mode)
+    if (!user?.id) return
+    const key = `last_page_${user.id}`
+    const saved = localStorage.getItem(key)
+    if (saved) setPage(saved)
   }, [user?.id])
+  useEffect(() => {
+    if (!user?.id) return
+    const key = `last_page_${user.id}`
+    localStorage.setItem(key, page)
+  }, [page, user?.id])
+
+  // Sidebar items – could be filtered by role if you want
+  const navItems = useMemo(() => PAGES, [])
 
   return (
     <div className="container">
-      {/* Header */}
+      {/* Top bar */}
       <div className="glass header">
-        <div className="brand">Nexus Panel</div>
-
+        <div className="headerLeft">
+          <div className="brand">Nexus Panel</div>
+          {user && <span className="small glass pill">{user.name} • {user.role}</span>}
+        </div>
         <div className="headerRight">
-          {/* Theme dropdown first */}
-          <ThemeControls user={user} />
+          {/* Theme select */}
+          <select
+            className="input xs"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)}
+            aria-label="Theme"
+            style={{ maxWidth: 180 }}
+          >
+            {THEMES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+          </select>
 
-          {/* Light/Dark toggle second */}
-          <ToggleLightDark user={user} />
+          {/* Light/Dark toggle */}
+          <button
+            className="btn xs"
+            onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle light/dark"
+          >
+            {mode === 'dark' ? '🌙 Dark' : '🌞 Light'}
+          </button>
 
-          {/* Logout last */}
+          {/* Logout */}
           {user && (
             <button
               className="btn xs"
-              onClick={() => {
-                setUser(null)
-                setPage('overview')
-              }}
-              title="Logout"
+              onClick={() => { setUser(null); setPage('overview') }}
             >
               Logout
             </button>
@@ -203,15 +202,16 @@ export default function App() {
         <div className="layout">
           <Sidebar
             user={user}
-            active={page}
-            onNavigate={(key) => setPage(key)}
+            page={page}
+            setPage={setPage}
+            // Sidebar expects items with {key, icon, label}
+            items={navItems}
           />
-          <Frame user={user} page={page} />
+          <Frame user={user} page={page} setPage={setPage} />
         </div>
       )}
 
-      <div className="footer small">Nexus Panel Official Demo</div>
-      <Numpad />
+      <div className="footer small">Official Nexus Panel Demo</div>
     </div>
   )
 }

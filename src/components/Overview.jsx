@@ -1,225 +1,263 @@
 // src/components/Overview.jsx
 import React from 'react'
-import Sortable from 'sortablejs'
+import { supabase } from '../supabase'
 
-import Calendar from './Calendar'
-import Assignments from './Assignments'
-import Wallet from './Wallet'
-import Library from './Library'
-import Appointments from './Appointments'
-import BulletinBoard from './BulletinBoard'
-import MapPanel from './MapPanel'
-import Lunch from './Lunch'
-import TeacherPanel from './TeacherPanel'
-import AdminPanel from './AdminPanel'
+const DAYS = ['Mon','Tue','Wed','Thu','Fri']
+const SLOTS = [
+  { key:'care', label:'Caregroup',  minutes:10 },
+  { key:'l1',   label:'Lesson 1',   minutes:50 },
+  { key:'l2',   label:'Lesson 2',   minutes:50 },
+  { key:'rec',  label:'Recess',     minutes:20 },
+  { key:'l3',   label:'Lesson 3',   minutes:50 },
+  { key:'l4',   label:'Lesson 4',   minutes:50 },
+  { key:'lun',  label:'Lunch',      minutes:50 },
+  { key:'l5',   label:'Lesson 5',   minutes:50 },
+  { key:'l6',   label:'Lesson 6',   minutes:50 },
+]
 
-/* ===== Sticky Note AS a widget (not inside a card) ===== */
-function StickyNoteWidget({ w, onEdit }) {
-  return (
-    <div className="stickyWidget">
-      <div className="stickyPin" aria-hidden>📌</div>
-      <textarea
-        className="stickyPaperArea"
-        value={w.text || ''}
-        onChange={(e)=>onEdit({ text: e.target.value })}
-        placeholder="Type a note…"
-      />
-      <div className="stickyFooter">
-        <button className="btn xs" onClick={()=>onEdit({ color: cycle(w.color) })}>Color</button>
-      </div>
-    </div>
-  )
-}
-const COLORS = ['yellow','mint','lilac','peach']
-const cycle = (c)=> COLORS[(COLORS.indexOf(c||'yellow')+1)%COLORS.length]
-
-/* ===== Registry ===== */
-const REGISTRY = {
-  calendar:     { label:'Calendar',     render: (u,c)=> <Calendar user={u} styleVariant={c.style}/> },
-  assignments:  { label:'Assignments',  render: (u,c)=> <Assignments user={u} styleVariant={c.style} density={c.density}/> },
-  wallet:       { label:'Wallet',       render: (u,c)=> <Wallet user={u} styleVariant={c.style} density={c.density}/> },
-  library:      { label:'Library',      render: (u,c)=> <Library user={u} styleVariant={c.style}/> },
-  appointments: { label:'Wellbeing',    render: (u,c)=> <Appointments user={u} styleVariant={c.style}/> },
-  bulletin:     { label:'Bulletin',     render: (u,c)=> <BulletinBoard user={u} styleVariant={c.style} density={c.density}/> },
-  map:          { label:'Map',          render: (u,c)=> <MapPanel styleVariant={c.style}/> },
-  lunch:        { label:'Lunch',        render: (u,c)=> <Lunch user={u} styleVariant={c.style} density={c.density}/> },
-  teacherpanel: { label:'Teacher Panel',render: (u,c)=> <TeacherPanel user={u} styleVariant={c.style}/> },
-  adminpanel:   { label:'Admin Panel',  render: (u,c)=> <AdminPanel   user={u} styleVariant={c.style}/> },
-  stickynote:   { label:'Sticky Note',  render: (u,c,edit)=> <StickyNoteWidget w={c} onEdit={(p)=>edit(p)} /> },
-}
-
-export default function Overview({ user }){
-  const storageKey = `widgets_${user.id}`
-
-  const [widgets,setWidgets] = React.useState(()=>{ 
-    const saved = JSON.parse(localStorage.getItem(storageKey)||'[]')
-    if (saved.length) return saved
-    const seed = (user.role==='student'
-      ? ['calendar','assignments','wallet','bulletin','library','lunch','stickynote']
-      : user.role==='teacher'
-        ? ['teacherpanel','calendar','bulletin','lunch','assignments','library','stickynote']
-        : ['adminpanel','calendar','bulletin','lunch','assignments','library','stickynote']
-    )
-    return seed.map((k,i)=>({ id:String(i+1), k,
-      size: (i%3===2 ? 'long' : 'small'),
-      style:'glass', density:'compact',
-      color: 'yellow', text: (k==='stickynote'?'':'')
-    }))
-  })
-  const [adding,setAdding]   = React.useState(false)
-  const [showGrid,setShowGrid] = React.useState(false)
-  const gridRef  = React.useRef(null)
-
-  const save = (arr)=> localStorage.setItem(storageKey, JSON.stringify(arr))
-  const add  = (k, extra={})=>{
-    const id=String(Date.now())
-    const base={id,k,size:'small',style:'glass',density:'compact',color:'yellow',text:'',...extra}
-    const arr=[...widgets, base]; setWidgets(arr); save(arr); setAdding(false)
+// base day start 08:50
+function slotTimes() {
+  const out = []
+  let h = 8, m = 50
+  for (const s of SLOTS) {
+    const start = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
+    // add minutes
+    let mm = m + s.minutes
+    let hh = h
+    while (mm >= 60) { mm -= 60; hh += 1 }
+    const end = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
+    out.push({ key: s.key, label: s.label, start, end })
+    h = hh; m = mm
   }
-  const edit = (id, patch)=>{ const arr=widgets.map(w=>w.id===id?{...w, ...patch}:w); setWidgets(arr); save(arr) }
-  const remove = (id)=>{ const arr=widgets.filter(w=>w.id!==id); setWidgets(arr); save(arr) }
-  const setSize = (id,size)=> edit(id,{ size })
-  const setStyle = (id,style)=> edit(id,{ style })
-  const setDensity = (id,density)=> edit(id,{ density })
+  return out
+}
+const TIMES = slotTimes()
 
-  // Sortable for smooth drag with subtle animation
-  React.useEffect(()=>{
-    if(!gridRef.current) return
-    const sortable = Sortable.create(gridRef.current, {
-      animation: 170,
-      easing: 'cubic-bezier(.2,.8,.2,1)',
-      draggable: '.widget',
-      handle: '.dragHandle6',
-      setData(){},
-      ghostClass: 'drag-ghost',
-      fallbackClass: 'drag-fallback',
-      forceFallback: true,
-      onChoose: (evt)=>{ setShowGrid(true); evt.item.classList.add('draggingPulseSoft') },
-      onEnd:    (evt)=>{
-        setShowGrid(false); evt.item.classList.remove('draggingPulseSoft')
-        if (evt.oldIndex===evt.newIndex) return
-        const arr=[...widgets]; const [m]=arr.splice(evt.oldIndex,1); arr.splice(evt.newIndex,0,m)
-        setWidgets(arr); save(arr)
+// Render helper
+const Money = ({ n }) => <b>${(Number(n)||0).toFixed(2)}</b>
+
+// Merge double lessons: if two adjacent subject+room same, merge
+function mergeDay(daySlots) {
+  const merged = []
+  let i=0
+  while (i<daySlots.length) {
+    const a = daySlots[i]
+    if (i<daySlots.length-1) {
+      const b = daySlots[i+1]
+      const canMerge = a && b && a.kind==='lesson' && b.kind==='lesson' &&
+        a.subject && b.subject && a.subject===b.subject &&
+        a.room && b.room && a.room===b.room
+      if (canMerge) {
+        merged.push({ ...a, span:2, endLabel: TIMES[i+1].end })
+        i+=2; continue
       }
-    })
-    return ()=> sortable.destroy()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widgets])
+    }
+    merged.push({ ...a, span:1, endLabel: TIMES[i].end })
+    i+=1
+  }
+  return merged
+}
 
-  const REG = REGISTRY
+// Fallback demo subjects if no DB timetable
+const DEMO_SUBJECTS = ['Math','English','Science','History','Geography','PE','Art','Tech','Drama','Music']
+
+export default function Overview({ user, onGo }) {
+  const [wallet, setWallet] = React.useState(0)
+  const [photoUrl, setPhotoUrl] = React.useState(null)
+  const [appointments, setAppointments] = React.useState([])
+  const [assignments, setAssignments] = React.useState([])
+  const [grid, setGrid] = React.useState([]) // [dayIndex] => 9 slots
+
+  const loadData = React.useCallback(async () => {
+    if (!user?.id) return
+
+    // Wallet
+    const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', user.id).maybeSingle()
+    setWallet(w?.balance ?? 0)
+
+    // Photo (avatar_url on users or storage fallback)
+    const { data: u } = await supabase.from('users').select('avatar_url').eq('id', user.id).maybeSingle()
+    setPhotoUrl(u?.avatar_url || null)
+
+    // Appointments next 5 days
+    const { data: appts } = await supabase
+      .from('appointments')
+      .select('id,start_at,end_at,staff_name,topic')
+      .gte('start_at', new Date().toISOString())
+      .lte('start_at', new Date(Date.now()+5*86400000).toISOString())
+      .eq('student_id', user.id)
+      .order('start_at', { ascending: true })
+    setAppointments(appts || [])
+
+    // Assignments upcoming
+    const { data: asg } = await supabase
+      .from('assignments')
+      .select('id,title,subject,due_date,status')
+      .gte('due_date', new Date().toISOString())
+      .eq('student_id', user.id)
+      .order('due_date', { ascending: true })
+    setAssignments(asg || [])
+
+    // Timetable entries — try common shapes, fallback to demo
+    // Expected shape attempt 1: timetable_entries(user_id, day:1-5, slot:0-8, subject, room)
+    let timetable = null
+    try {
+      const { data: t1, error: e1 } = await supabase
+        .from('timetable_entries')
+        .select('day,slot,subject,room')
+        .eq('user_id', user.id)
+      if (!e1 && Array.isArray(t1) && t1.length) timetable = t1
+    } catch {}
+
+    // Attempt 2: timetables(user_id, day_of_week, slot_index, subject, room)
+    if (!timetable) {
+      try {
+        const { data: t2, error: e2 } = await supabase
+          .from('timetables')
+          .select('day_of_week,slot_index,subject,room')
+          .eq('user_id', user.id)
+        if (!e2 && Array.isArray(t2) && t2.length) {
+          timetable = t2.map(r => ({
+            day: r.day_of_week, slot: r.slot_index, subject: r.subject, room: r.room
+          }))
+        }
+      } catch {}
+    }
+
+    // Build grid 5×9
+    const base = Array.from({length:5}, () =>
+      SLOTS.map((s, i) => {
+        const kind = s.label.toLowerCase().includes('lesson') ? 'lesson'
+              : s.label.toLowerCase().includes('recess') ? 'recess'
+              : s.label.toLowerCase().includes('lunch') ? 'lunch'
+              : 'care'
+        return { kind, subject:null, room:null, label:s.label, start:TIMES[i].start, end:TIMES[i].end }
+      })
+    )
+
+    if (timetable) {
+      for (const r of timetable) {
+        const d = (r.day ?? r.day_of_week ?? r.dow ?? 1) - 1
+        const s = (r.slot ?? r.slot_index ?? r.period ?? 0)
+        if (d>=0 && d<5 && s>=0 && s<9) {
+          base[d][s].subject = r.subject || base[d][s].subject
+          base[d][s].room = r.room || base[d][s].room
+        }
+      }
+    } else {
+      // DEMO schedule: distributed subjects, with a couple of doubles
+      for (let d=0; d<5; d++) {
+        let si = d
+        for (let s=0; s<9; s++) {
+          if (base[d][s].kind==='lesson') {
+            const subj = DEMO_SUBJECTS[(si++) % DEMO_SUBJECTS.length]
+            base[d][s].subject = subj
+            base[d][s].room = d===2 && (s===4||s===5) ? 'A2' : (d===4 && (s===1||s===2)) ? 'C3' : ['A1','B2','C1','A3','Tech 2','Gym 1'][ (d+s)%6 ]
+          }
+        }
+        // add doubles like spec
+        if (d===2) { // Wed: L3 & L4 double (indices 4,5)
+          base[d][4].subject='Math'; base[d][5].subject='Math'; base[d][4].room='A2'; base[d][5].room='A2'
+        }
+        if (d===4) { // Fri: L1 & L2 double (indices 1,2)
+          base[d][1].subject='English'; base[d][2].subject='English'; base[d][1].room='C3'; base[d][2].room='C3'
+        }
+      }
+    }
+
+    // Merge doubles per day
+    setGrid(base.map(mergeDay))
+  }, [user?.id])
+
+  React.useEffect(() => { loadData() }, [loadData])
 
   return (
-    <div className="widgetsArea">
-      <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
-        <h2>Overview</h2>
-        <div className="flex" style={{gap:8}}>
-          <button className="btn xs" onClick={()=>{ localStorage.removeItem(storageKey); window.location.reload() }}>Reset</button>
-          <button className="btn btn-primary xs" onClick={()=>setAdding(true)}>＋ Add</button>
-        </div>
-      </div>
-
-      {showGrid && <div className="fineGrid" aria-hidden />}
-
-      <div className="widgetsGrid" ref={gridRef}>
-        {widgets.map((w)=>{
-          const def = REG[w.k]; if(!def) return null
-          const isNote = w.k === 'stickynote'
-          return (
-            <div key={w.id} className={`widget size-${w.size} ${isNote?'noteOnly':''}`} data-id={w.id}>
-              {/* if sticky note → render free-note surface; else → normal inner card */}
-              {isNote ? (
-                <div className={`noteInner note-${w.color}`}>
-                  <div className="widgetToolbar">
-                    <button className="dragHandle6" title="Drag">⠿</button>
-                    <span className="small">Sticky Note</span>
-                    <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
-                      <option value="small">Small</option>
-                      <option value="tall">Tall</option>
-                      <option value="long">Long</option>
-                      <option value="xl">XL</option>
-                    </select>
-                    <button className="btn xs" onClick={()=>edit(w.id, { color: (COLORS[(COLORS.indexOf(w.color)+1)%COLORS.length]) })}>Color</button>
-                    <button className="btn btn-ghost xs" onClick={()=>remove(w.id)}>✕</button>
-                  </div>
-                  <div className="noteCanvas">
-                    <div className="stickyWidget">
-                      <div className="stickyPin" aria-hidden>📌</div>
-                      <textarea
-                        className={`stickyPaperArea ${w.color || 'yellow'}`}
-                        value={w.text || ''}
-                        onChange={(e)=>edit(w.id, { text: e.target.value })}
-                        placeholder="Type a note…"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="widgetInner glass">
-                  <div className="widgetToolbar">
-                    <button className="dragHandle6" title="Drag">⠿</button>
-                    <span className="small">{def.label}</span>
-                    <select className="input xs" value={w.size} onChange={e=>setSize(w.id, e.target.value)}>
-                      <option value="small">Small</option>
-                      <option value="tall">Tall</option>
-                      <option value="long">Long</option>
-                      <option value="xl">XL</option>
-                    </select>
-                    <select className="input xs" value={w.style} onChange={e=>setStyle(w.id, e.target.value)}>
-                      <option value="glass">Glass</option>
-                      <option value="solid">Solid</option>
-                      <option value="outline">Outline</option>
-                    </select>
-                    <select className="input xs" value={w.density} onChange={e=>setDensity(w.id, e.target.value)}>
-                      <option value="compact">Compact</option>
-                      <option value="comfortable">Comfortable</option>
-                    </select>
-                    <button className="btn btn-ghost xs" onClick={()=>remove(w.id)}>✕</button>
-                  </div>
-                  <div className="widgetBody">
-                    {def.render({ ...user }, w, (p)=>edit(w.id,p))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {adding && (
-        <div className="modal" onClick={(e)=>{ if(e.target===e.currentTarget) setAdding(false) }}>
-          <div className="modalBody glass card">
-            <div className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
-              <b>Add widgets</b>
-              <button className="btn btn-ghost" onClick={()=>setAdding(false)}>Close</button>
-            </div>
-
-            <h4 style={{margin:'10px 0 6px'}}>Core</h4>
-            <div className="widgetPicker">
-              {Object.entries(REG).filter(([k])=>!['stickynote','teacherpanel','adminpanel'].includes(k)).map(([k,def])=>(
-                <button key={k} className="glass card pickBtn" onClick={()=>add(k)}>{def.label}</button>
-              ))}
-            </div>
-
-            {(user.role!=='student') && (
-              <>
-                <h4 style={{margin:'14px 0 6px'}}>Staff</h4>
-                <div className="widgetPicker">
-                  {Object.entries(REG).filter(([k])=>['teacherpanel','adminpanel'].includes(k)).map(([k,def])=>(
-                    <button key={k} className="glass card pickBtn" onClick={()=>add(k)}>{def.label}</button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            <h4 style={{margin:'14px 0 6px'}}>Personal</h4>
-            <div className="widgetPicker">
-              <button className="glass card pickBtn" onClick={()=>add('stickynote',{ text:'', color:'yellow' })}>
-                Sticky Note
-              </button>
-            </div>
+    <div className="overviewPanel glass">
+      {/* Header row: title + shortcuts + photo */}
+      <div className="overviewHeader">
+        <div className="ohLeft">
+          <h2 className="ohTitle">This Week</h2>
+          <div className="ohShortcuts">
+            <button className="btn xs" onClick={()=>onGo?.('calendar')}>Calendar</button>
+            <button className="btn xs" onClick={()=>onGo?.('assignments')}>Assignments</button>
+            <button className="btn xs" onClick={()=>onGo?.('appointments')}>Wellbeing</button>
+            <button className="btn xs" onClick={()=>onGo?.('lunch')}>Lunch (<Money n={wallet}/>)</button>
+            <button className="btn xs" onClick={()=>onGo?.('map')}>Map</button>
           </div>
         </div>
-      )}
+        <div className="ohRight">
+          <div className="ohMeta glass pill">Wallet: <Money n={wallet}/></div>
+          {photoUrl ? (
+            <img className="avatar" src={photoUrl} alt="profile" />
+          ) : (
+            <div className="avatar placeholder">👤</div>
+          )}
+        </div>
+      </div>
+
+      {/* Week grid */}
+      <div className="weekShell">
+        <div className="timeCol glass">
+          <div className="timeHead">Times</div>
+          {TIMES.map((t, i) => (
+            <div key={i} className="timeCell">
+              <div className="timeRange">{t.start} – {t.end}</div>
+              <div className="timeLabel">{SLOTS[i].label}</div>
+            </div>
+          ))}
+        </div>
+
+        {grid.map((day, di) => (
+          <div key={DAYS[di]} className="dayCol glass">
+            <div className="dayHead">{DAYS[di]}</div>
+            {day.map((slot, si) => (
+              <div
+                key={`${di}-${si}`}
+                className={`slotCell ${slot.kind} ${slot.span===2?'span2':''}`}
+                style={slot.span===2 ? { gridRow: `span 2` } : undefined}
+              >
+                <div className="slotMain">
+                  <div className="slotTitle">
+                    {slot.kind==='lesson'
+                      ? (slot.subject || '—')
+                      : SLOTS[si].label}
+                  </div>
+                  <div className="slotMeta">
+                    {slot.kind==='lesson' ? (slot.room ? `Room ${slot.room}` : 'Room —') : ''}
+                    {slot.span===2 && <span className="badge">Double</span>}
+                  </div>
+                </div>
+                <div className="slotTimes">{TIMES[si].start} – {slot.endLabel}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Upcoming strip */}
+      <div className="overviewFooter">
+        <div className="glass card strip">
+          <b>Upcoming appointments (5 days)</b>
+          <div className="stripList">
+            {appointments?.length ? appointments.map(a => (
+              <div key={a.id} className="chip">
+                {new Date(a.start_at).toLocaleString()} — {a.staff_name || 'Staff'} {a.topic?`• ${a.topic}`:''}
+              </div>
+            )) : <span className="small">None</span>}
+          </div>
+        </div>
+
+        <div className="glass card strip">
+          <b>Upcoming assignments</b>
+          <div className="stripList">
+            {assignments?.length ? assignments.map(x => (
+              <div key={x.id} className="chip">
+                {x.subject || 'Subject'} • {x.title} — due {new Date(x.due_date).toLocaleDateString()}
+              </div>
+            )) : <span className="small">None</span>}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
