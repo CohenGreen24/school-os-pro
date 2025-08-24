@@ -2,30 +2,53 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-function Money({ n }) {
-  const val = Number.isFinite(Number(n)) ? Number(n) : 0
-  return <b>${val.toFixed(2)}</b>
-}
+const Money = ({ n }) => <b>${(Number(n) || 0).toFixed(2)}</b>
 
 export default function Lunch({ user }) {
   const [menu, setMenu] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [wallet, setWallet] = React.useState(0)
-
-  // cart: { [itemId]: { item, qty } }
-  const [cart, setCart] = React.useState({})
+  const [cart, setCart] = React.useState({}) // { [id]: { item, qty } }
 
   const total = React.useMemo(
-    () => Object.values(cart).reduce((sum, c) => sum + (Number(c.item.price || 0) * c.qty), 0),
+    () => Object.values(cart).reduce((s, c) => s + (Number(c.item.price || 0) * c.qty), 0),
     [cart]
   )
+
+  // Robust fetch that tolerates legacy schemas
+  const loadMenu = React.useCallback(async () => {
+    // Try a sequence of column/filters until one works and returns rows
+    const attempts = [
+      { select: 'id,name,price,image_url,is_active', active: true },
+      { select: 'id,name:item_name,price,image_url,is_active', active: true },
+      { select: 'id,name,price,image_url', active: false },
+      { select: 'id,name:item_name,price,image_url', active: false },
+    ]
+
+    for (const a of attempts) {
+      try {
+        let q = supabase.from('lunch_menu').select(a.select).order('name', { ascending: true }).limit(24)
+        if (a.active) q = q.eq('is_active', true)
+        const { data, error } = await q
+        if (error) {
+          // Try next attempt
+          continue
+        }
+        if (Array.isArray(data)) {
+          return data // even if empty; we’ll handle empty case in UI
+        }
+      } catch {
+        // keep looping
+      }
+    }
+    throw new Error('Could not load lunch_menu — please ensure required columns exist.')
+  }, [])
 
   const refresh = React.useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      // Wallet
       if (user?.id) {
         const { data: w } = await supabase
           .from('wallets')
@@ -36,22 +59,15 @@ export default function Lunch({ user }) {
       } else {
         setWallet(0)
       }
-
-      // Menu (active items)
-      const { data: items, error: e2 } = await supabase
-        .from('lunch_menu')
-        .select('id,name,price,image_url,is_active')
-        .eq('is_active', true)
-        .order('name', { ascending: true })
-
-      if (e2) throw e2
+      const items = await loadMenu()
       setMenu(items || [])
     } catch (e) {
       setError(e.message || 'Failed to load lunch menu')
+      setMenu([])
     } finally {
       setLoading(false)
     }
-  }, [user?.id])
+  }, [user?.id, loadMenu])
 
   React.useEffect(() => { refresh() }, [refresh])
 
@@ -81,6 +97,7 @@ export default function Lunch({ user }) {
   })
   const clearCart = () => setCart({})
 
+  // place order
   const placeOrder = async () => {
     if (!user?.id) { alert('Please sign in first.'); return }
     if (!Object.keys(cart).length) return
@@ -107,7 +124,7 @@ export default function Lunch({ user }) {
 
   return (
     <div className="lunchPanel">
-      {/* Two-column layout: LEFT grid (4x4), RIGHT wallet+cart */}
+      {/* Two-column layout */}
       <div
         className="glass"
         style={{
@@ -119,7 +136,7 @@ export default function Lunch({ user }) {
           minHeight: 520
         }}
       >
-        {/* LEFT: Menu Grid */}
+        {/* LEFT: 4×4 Grid */}
         <div style={{ minWidth: 0 }}>
           {loading && <div className="small">Loading menu…</div>}
           {error && <div className="small" style={{ color: '#ef4444' }}>{error}</div>}
@@ -130,18 +147,20 @@ export default function Lunch({ user }) {
           >
             {menu.map(item => {
               const inCart = cart[item.id]?.qty || 0
+              // tolerate missing name/image_url from legacy schemas
+              const displayName = item.name ?? item.item_name ?? 'Item'
               return (
                 <div className="lunchCard glass" key={item.id} style={{ display: 'flex', flexDirection: 'column' }}>
                   <div className="lunchImgWrap">
                     {item.image_url
-                      ? <img src={item.image_url} alt={item.name} className="lunchImg" />
+                      ? <img src={item.image_url} alt={displayName} className="lunchImg" />
                       : <div className="lunchImg placeholder">No image</div>}
                   </div>
 
                   <div className="card" style={{ display: 'grid', gap: 6 }}>
                     <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ fontWeight: 700, fontSize: '.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {item.name}
+                        {displayName}
                       </div>
                       <Money n={item.price} />
                     </div>
@@ -158,9 +177,10 @@ export default function Lunch({ user }) {
                 </div>
               )
             })}
+
             {(!loading && menu.length === 0) && (
               <div className="small" style={{ gridColumn: '1/-1', opacity: .8 }}>
-                No items available.
+                No items available yet. (Check <code>public.lunch_menu</code> has rows.)
               </div>
             )}
           </div>
@@ -178,28 +198,32 @@ export default function Lunch({ user }) {
             {Object.values(cart).length === 0 && (
               <div className="small" style={{ opacity: .8 }}>No items yet. Tap + to add.</div>
             )}
-            {Object.values(cart).map(({ item, qty }) => (
-              <div key={item.id} className="glass" style={{ padding: 8, borderRadius: 10, display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}>
-                <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                  <div className="small"><Money n={item.price} /> × {qty}</div>
+            {Object.values(cart).map(({ item, qty }) => {
+              const displayName = item.name ?? item.item_name ?? 'Item'
+              return (
+                <div key={item.id} className="glass" style={{ padding: 8, borderRadius: 10, display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}>
+                  <div style={{ overflow: 'hidden' }}>
+                    <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+                    <div className="small"><Money n={item.price} /> × {qty}</div>
+                  </div>
+                  <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
+                    <button className="btn xs" onClick={() => subOne(item)}>-</button>
+                    <div>{qty}</div>
+                    <button className="btn xs" onClick={() => addOne(item)}>+</button>
+                    <button className="btn xs" onClick={() => removeItem(item.id)}>✕</button>
+                  </div>
                 </div>
-                <div className="flex" style={{ gap: 6, alignItems: 'center' }}>
-                  <button className="btn xs" onClick={() => subOne(item)}>-</button>
-                  <div>{qty}</div>
-                  <button className="btn xs" onClick={() => addOne(item)}>+</button>
-                  <button className="btn xs" onClick={() => removeItem(item.id)}>✕</button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
-          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+          <div className="flex" style={{ justifyContent: 'flex-end', alignItems: 'center', marginTop: 10, gap: 10 }}>
             <span>Total: <Money n={total} /></span>
             <button
               className="btn btn-primary"
               disabled={total <= 0 || total > wallet}
               onClick={placeOrder}
+              style={{ marginLeft: 6 }}   // nudge to the right “just a smidge”
             >
               Order
             </button>
