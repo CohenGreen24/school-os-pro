@@ -4,22 +4,22 @@ import { supabase } from '../supabase'
 
 const Money = ({ n }) => <b>${(Number(n) || 0).toFixed(2)}</b>
 
-// Fallback images by name if DB image_url is missing
+/** Stable fallback images (Wikimedia/Unsplash) by item name */
 const FALLBACK_IMG = {
-  'Chicken Wrap':       'https://images.unsplash.com/photo-1550547660-d9450f859349?w=1200&q=80&auto=format&fit=crop',
-  'Veggie Wrap':        'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=1200&q=80&auto=format&fit=crop',
-  'Beef Burger':        'https://images.unsplash.com/photo-1550547660-10d8a0e6bbf7?w=1200&q=80&auto=format&fit=crop',
-  'Grilled Cheese':     'https://images.unsplash.com/photo-1604908177073-b6e7d2d2f9b7?w=1200&q=80&auto=format&fit=crop',
-  'Pasta Salad':        'https://images.unsplash.com/photo-1566843972141-0826b99f5b82?w=1200&q=80&auto=format&fit=crop',
-  'Fruit Cup':          'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=1200&q=80&auto=format&fit=crop',
-  'Yogurt Parfait':     'https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?w=1200&q=80&auto=format&fit=crop',
-  'Sushi Roll (4pc)':   'https://images.unsplash.com/photo-1553621042-f6e147245754?w=1200&q=80&auto=format&fit=crop',
-  'Chicken Fried Rice': 'https://images.unsplash.com/photo-1604908554161-9f2d6a2e0c77?w=1200&q=80&auto=format&fit=crop',
-  'Caesar Salad':       'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=1200&q=80&auto=format&fit=crop',
-  'Pumpkin Soup':       'https://images.unsplash.com/photo-1604908578090-9d5b0f2f7c20?w=1200&q=80&auto=format&fit=crop',
-  'Iced Tea':           'https://images.unsplash.com/photo-1511920170033-f8396924c348?w=1200&q=80&auto=format&fit=crop',
-  // common extras just in case
-  'Bottled Water':      'https://images.unsplash.com/photo-1523365280197-f1783db9fe62?w=1200&q=80&auto=format&fit=crop'
+  'Chicken Wrap':       'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Chicken_wrap.jpg/640px-Chicken_wrap.jpg',
+  'Veggie Wrap':        'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Veggie_wraps.jpg/640px-Veggie_wraps.jpg',
+  'Beef Burger':        'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Hamburger_%28black_bg%29.jpg/640px-Hamburger_%28black_bg%29.jpg',
+  'Grilled Cheese':     'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Grilled_Cheese_sandwich.jpg/640px-Grilled_Cheese_sandwich.jpg',
+  'Pasta Salad':        'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Pasta_salad_with_tuna_and_eggs.jpg/640px-Pasta_salad_with_tuna_and_eggs.jpg',
+  'Fruit Cup':          'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Fruit_salad_in_a_glass_bowl.jpg/640px-Fruit_salad_in_a_glass_bowl.jpg',
+  'Yogurt Parfait':     'https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Yogurt_parfait.jpg/640px-Yogurt_parfait.jpg',
+  'Sushi Roll (4pc)':   'https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Sushi_platter.jpg/640px-Sushi_platter.jpg',
+  'Chicken Fried Rice': 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Chicken_fried_rice.jpg/640px-Chicken_fried_rice.jpg',
+  'Caesar Salad':       'https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Caesar_salad_%281%29.jpg/640px-Caesar_salad_%281%29.jpg',
+  'Pumpkin Soup':       'https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Pumpkin_soup.jpg/640px-Pumpkin_soup.jpg',
+  'Iced Tea':           'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Iced_tea_glass.jpg/640px-Iced_tea_glass.jpg',
+  // common extra
+  'Bottled Water':      'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Bottled_water.jpg/640px-Bottled_water.jpg'
 }
 
 export default function Lunch({ user }) {
@@ -34,22 +34,20 @@ export default function Lunch({ user }) {
     [cart]
   )
 
-  // robust menu loader (supports legacy item_name / missing is_active)
   const loadMenu = React.useCallback(async () => {
     const attempts = [
-      { select: 'id,name,price,image_url,is_active', active: true },
-      { select: 'id,name:item_name,price,image_url,is_active', active: true },
-      { select: 'id,name,price,image_url', active: false },
-      { select: 'id,name:item_name,price,image_url', active: false },
+      { sel: 'id,name,price,image_url,is_active', active: true },
+      { sel: 'id,name:item_name,price,image_url,is_active', active: true },
+      { sel: 'id,name,price,image_url', active: false },
+      { sel: 'id,name:item_name,price,image_url', active: false },
     ]
     for (const a of attempts) {
       try {
-        let q = supabase.from('lunch_menu').select(a.select).order('name', { ascending: true }).limit(32)
+        let q = supabase.from('lunch_menu').select(a.sel).order('name', { ascending: true }).limit(32)
         if (a.active) q = q.eq('is_active', true)
         const { data, error } = await q
-        if (error) continue
-        if (Array.isArray(data)) return data
-      } catch {}
+        if (!error && Array.isArray(data)) return data
+      } catch { /* try next */ }
     }
     return []
   }, [])
@@ -61,49 +59,31 @@ export default function Lunch({ user }) {
         const { data: w } = await supabase
           .from('wallets').select('balance').eq('user_id', user.id).maybeSingle()
         setWallet(w?.balance ?? 0)
-      } else {
-        setWallet(0)
-      }
+      } else setWallet(0)
+
       const items = await loadMenu()
       setMenu(items || [])
     } catch (e) {
-      setError(e.message || 'Failed to load lunch menu')
-      setMenu([])
-    } finally {
-      setLoading(false)
-    }
+      setError(e.message || 'Failed to load lunch menu'); setMenu([])
+    } finally { setLoading(false) }
   }, [user?.id, loadMenu])
 
   React.useEffect(() => { refresh() }, [refresh])
 
   // cart helpers
-  const addOne = (item) => {
-    setCart(curr => {
-      const prev = curr[item.id]
-      const qty = prev ? prev.qty + 1 : 1
-      return { ...curr, [item.id]: { item, qty } }
-    })
-  }
-  const subOne = (item) => {
-    setCart(curr => {
-      const prev = curr[item.id]
-      if (!prev) return curr
-      const qty = prev.qty - 1
-      const next = { ...curr }
-      if (qty <= 0) delete next[item.id]
-      else next[item.id] = { item, qty }
-      return next
-    })
-  }
-  const clearCart = () => setCart({})
-  const removeItem = (id) => setCart(curr => {
-    const next = { ...curr }; delete next[id]; return next
+  const addOne = (item) => setCart(c => ({ ...c, [item.id]: { item, qty: (c[item.id]?.qty || 0) + 1 } }))
+  const subOne = (item) => setCart(c => {
+    const prev = c[item.id]; if (!prev) return c
+    const qty = prev.qty - 1; const n = { ...c }
+    if (qty <= 0) delete n[item.id]; else n[item.id] = { item, qty }
+    return n
   })
+  const clearCart = () => setCart({})
+  const removeItem = (id) => setCart(c => { const n = { ...c }; delete n[id]; return n })
 
   const placeOrder = async () => {
     if (!user?.id) { alert('Please sign in first.'); return }
     if (!Object.keys(cart).length) return
-
     const items = Object.values(cart)
     const sum = items.reduce((s, c) => s + (Number(c.item.price || 0) * c.qty), 0)
     if (wallet < sum) { alert('Insufficient wallet balance.'); return }
@@ -118,27 +98,41 @@ export default function Lunch({ user }) {
     setWallet(w => w - sum); clearCart(); alert('Order placed! 👌')
   }
 
-  // Only show up to 16 items (4×4)
+  // show up to 16 items (4x4)
   const gridItems = (menu || []).slice(0, 16)
+
+  /** image helper with robust fallback and onError swap */
+  const Img = ({ src, alt }) => {
+    const [okSrc, setOkSrc] = React.useState(src)
+    return (
+      <img
+        src={okSrc}
+        alt={alt}
+        className="compactImg"
+        onError={() => {
+          const fb = FALLBACK_IMG[alt] || FALLBACK_IMG['Fruit Cup']
+          if (okSrc !== fb) setOkSrc(fb)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="lunchPanel">
-      {/* iPad-friendly two-column split with independent scroll */}
       <div className="glass lunchShell">
-        {/* LEFT: menu grid (scrollable) */}
+        {/* LEFT — scrollable menu grid */}
         <div className="lunchLeft">
           {loading && <div className="small">Loading menu…</div>}
           {error && <div className="small" style={{ color: '#ef4444' }}>{error}</div>}
-
           <div className="lunchGridFixed">
             {gridItems.map(item => {
               const qty = cart[item.id]?.qty || 0
               const name = item.name ?? item.item_name ?? 'Item'
-              const img = item.image_url || FALLBACK_IMG[name] || FALLBACK_IMG['Fruit Cup'] // guaranteed fallback
+              const img = item.image_url || FALLBACK_IMG[name] || FALLBACK_IMG['Fruit Cup']
               return (
                 <div className="lunchCardCompact glass" key={item.id}>
                   <div className="compactImgWrap">
-                    <img src={img} alt={name} className="compactImg" />
+                    <Img src={img} alt={name} />
                   </div>
                   <div className="compactMeta">
                     <div className="compactTitle" title={name}>{name}</div>
@@ -160,13 +154,11 @@ export default function Lunch({ user }) {
           </div>
         </div>
 
-        {/* RIGHT: wallet + neat cart (scrollable) */}
+        {/* RIGHT — compact, scrollable cart */}
         <div className="lunchRight glass card">
           <div className="cartHeader">
             <span className="badge">Wallet: <Money n={wallet} /></span>
-            {Object.keys(cart).length > 0 && (
-              <button className="btn xs" onClick={clearCart}>Clear</button>
-            )}
+            {Object.keys(cart).length > 0 && <button className="btn xs" onClick={clearCart}>Clear</button>}
           </div>
 
           <div className="cartTitle">Cart</div>
@@ -177,15 +169,13 @@ export default function Lunch({ user }) {
             {Object.values(cart).map(({ item, qty }) => {
               const name = item.name ?? item.item_name ?? 'Item'
               return (
-                <div className="cartRow" key={item.id}>
-                  <div className="cartLine">
-                    {qty} × {name}
-                  </div>
-                  <div className="cartBtns">
+                <div className="cartLineItem" key={item.id}>
+                  {qty} × {name}
+                  <span className="cartLineBtns">
                     <button className="btn xs" onClick={() => subOne(item)}>-</button>
                     <button className="btn xs" onClick={() => addOne(item)}>+</button>
                     <button className="btn xs" onClick={() => removeItem(item.id)}>✕</button>
-                  </div>
+                  </span>
                 </div>
               )
             })}
@@ -197,7 +187,7 @@ export default function Lunch({ user }) {
               className="btn btn-primary"
               disabled={total <= 0 || total > wallet}
               onClick={placeOrder}
-              style={{ marginLeft: 8 }}  // “just a smidge” to the right of total
+              style={{ marginLeft: 8 }}
             >
               Order
             </button>
