@@ -372,3 +372,82 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 }
 .switch input:checked + span{ background:#22c55e; }
 .switch input:checked + span:before{ transform: translateX(22px); }
+/* --- Lunch iPad layout (compact; 4x4 fixed grid; split scroll) --- */
+.lunchShell{
+  display:grid;
+  grid-template-columns: 3fr 1fr;
+  gap:12px;
+  padding:10px;
+  border-radius:12px;
+  min-height: 560px;
+  max-height: 72vh;            /* keeps both sides within screen */
+}
+
+.lunchLeft{
+  min-width:0;
+  overflow-y:auto;              /* left side scrolls independently */
+  padding-right: 2px;
+}
+
+.lunchRight{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  overflow:hidden;              /* right side internal areas manage scroll */
+}
+
+.lunchGridFixed{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  grid-auto-rows: 170px;        /* compact height per row */
+  gap:8px;
+  align-content:start;
+}
+
+/* Compact card */
+.lunchCardCompact{
+  display:grid;
+  grid-template-rows: 1fr auto auto;
+  gap:6px;
+  border-radius:12px;
+  padding:8px;
+}
+.compactImgWrap{ width:100%; height:100px; overflow:hidden; border-radius:10px; }
+.compactImg{ width:100%; height:100%; object-fit:cover; display:block; }
+.compactMeta{
+  display:flex; align-items:center; justify-content:space-between; gap:6px;
+}
+.compactTitle{ font-weight:700; font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.compactPrice{ font-size:.9rem; }
+
+.compactControls{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.compactControls .qty{ width:24px; text-align:center; }
+
+/* Cart panel */
+.cartHeader{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;
+}
+.cartTitle{ font-weight:700; margin-bottom:6px; }
+.cartList{
+  overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:6px; padding-right:2px;
+}
+.cartRow{
+  display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
+  border:1px solid var(--panel-border); border-radius:10px; padding:8px;
+  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
+}
+:root.dark .cartRow{
+  background: color-mix(in srgb, var(--widget-tint) 28%, black 72%);
+}
+.cartLine{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cartBtns{ display:flex; gap:6px; }
+.cartFooter{
+  display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:10px;
+}
+
+/* Ensure grid shows at most 4 rows without overflow causing 5th row */
+@media (min-height: 900px){
+  .lunchShell{ max-height: 78vh; }
+}
