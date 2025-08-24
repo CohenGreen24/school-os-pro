@@ -278,3 +278,83 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
     /* If you want it forced collapsed on small screens, add class: is-collapsed */
   }
 }
+/* --- Compact Overview (no Times column, iPad fit) --- */
+.overviewCompact{ padding:10px; display:flex; flex-direction:column; gap:10px; }
+.ovHeader{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.ovLeft{ display:flex; align-items:center; gap:10px; }
+.ovTitle{ margin:0; font-size:1.1rem; }
+.ovShortcuts{ display:flex; gap:6px; flex-wrap:wrap; }
+.ovRight{ display:flex; align-items:center; gap:10px; }
+.avatar{ width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--panel-border); }
+.avatar.placeholder{ display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.05); }
+
+.weekCompact{
+  /* 5 equal columns (Mon–Fri), each column hosts a 9-row grid */
+  display:grid; grid-template-columns: repeat(5, 1fr); gap:8px;
+}
+
+/* Column header + 9 compact slots in a small grid that fills available height */
+.dayColC{ padding:8px; }
+.dayHeadC{ font-weight:800; margin-bottom:6px; text-align:center; }
+
+/* Inner grid: 9 rows, short row height so whole week fits */
+.dayGridC{
+  display:grid;
+  grid-auto-rows: 48px; /* compact cell height; doubles will span to 96px */
+  gap:6px;
+}
+
+.slotC{
+  border:1px solid var(--panel-border);
+  border-radius:10px;
+  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
+  padding:6px 8px;
+  display:grid;
+  grid-template-rows: auto auto auto;
+  align-content:center;
+  row-gap:2px;
+  font-size:.85rem;
+}
+:root.dark .slotC{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
+
+.slotC.recess, .slotC.lunch{ opacity:.95; }
+
+.slotTop{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.slotTitleC{
+  font-weight:700;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.slotMetaC{ color: var(--muted); font-size:.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.slotTimeMini{ color: var(--muted); font-size:.74rem; justify-self:end; }
+
+.span2{ grid-row: span 2; } /* double = two rows high (96px) */
+
+/* Upcoming strips: single line, horizontal scroll if overflow */
+.ovStrips{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+.stripC{ display:flex; flex-direction:column; gap:6px; }
+.stripFlow{
+  display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling: touch;
+  padding-bottom:2px;
+}
+.chip{
+  padding:4px 10px; border-radius:999px;
+  border:1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
+  font-size:.83rem;
+}
+
+/* Slightly smaller UI on narrower screens */
+@media (max-width: 1200px){
+  .dayGridC{ grid-auto-rows: 46px; }
+  .slotC{ font-size:.82rem; }
+  .slotTimeMini{ font-size:.72rem; }
+}
+
+@media (max-width: 980px){
+  /* Stack week into a horizontal scroller if needed */
+  .weekCompact{
+    grid-template-columns: repeat(5, minmax(160px, 1fr));
+    overflow-x:auto; -webkit-overflow-scrolling: touch;
+  }
+  .ovStrips{ grid-template-columns: 1fr; }
+}
