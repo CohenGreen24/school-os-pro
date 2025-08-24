@@ -171,7 +171,7 @@ export default function App() {
     <div className="container">
       {/* Header */}
       <div className="glass header">
-        <div className="brand">EduGate</div>
+        <div className="brand">Nexus Panel</div>
 
         <div className="headerRight">
           {/* Theme dropdown first */}
@@ -210,7 +210,7 @@ export default function App() {
         </div>
       )}
 
-      <div className="footer small">© School OS Demo</div>
+      <div className="footer small">Nexus Panel Official Demo</div>
       <Numpad />
     </div>
   )
