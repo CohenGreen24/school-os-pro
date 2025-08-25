@@ -1,106 +1,189 @@
 /* =========================================================
-   School OS — Clean (No Widgets)
-   - Glassmorphic panels, rounded corners
-   - Sidebar (icon + text)
-   - Overview weekly timetable (Mon–Fri) with doubles
-   - Lunch iPad split scroll (4×4 grid + compact cart)
-   - Themes + dark mode
+   School OS — Clean Glass UI (iPad-first)
+   No widgets. Focus on: Sidebar, Topbar, Overview (timetable),
+   Lunch (4x4 grid + scrollable cart), Map overlay, Profile, etc.
+   Theme.js can override CSS vars if present (applyTheme).
    ========================================================= */
 
-/* ---------- Base tokens ---------- */
+/* ---------- CSS Variables / Theme ---------- */
 :root{
+  /* Glass + palette (light) */
   --bg-grad: linear-gradient(135deg,#eaf5ff,#d8ecff 45%,#c9e4ff);
   --panel: rgba(255,255,255,.55);
+  --panel-strong: rgba(255,255,255,.7);
   --panel-border: rgba(0,0,0,.08);
-  --accent:#0ea5e9;
-  --widget-tint:#eaf5ff;
-
   --text: #0f172a;
   --muted:#64748b;
+  --accent:#0ea5e9;
 
   --radius:14px;
-  --glass-blur:10px;
+  --glass-blur:12px;
+  --shadow: 0 6px 18px rgba(15, 23, 42, .10);
 
+  /* Layout */
   --touch: 44px;
-  --sidebar-w: 200px;
+  --sidebar-w: 200px; /* one icon + a short label */
   --content-max: 1680px;
+  --gutter: 12px;
 
-  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent) inset;
+  /* Map highlight */
+  --map-fill: rgba(255,255,255,0.22);
+  --map-stroke: rgba(0,0,0,0.35);
+  --map-fill-active: rgba(14,165,233,0.25);
+  --map-stroke-active: rgba(14,165,233,0.9);
 }
 :root.dark{
-  --text: #e5e7eb; --muted:#94a3b8;
-  --panel: rgba(22,24,28,.55); --panel-border: rgba(255,255,255,.12);
-  --bg-grad: linear-gradient(135deg,#0e1726,#0a1320 48%,#0b1524);
-  --widget-tint:#152238;
+  /* Glass (dark) */
+  --bg-grad: radial-gradient(1200px 900px at 40% 20%, #0b1220, #0b0f1a 52%, #0a0e16);
+  --panel: rgba(22,25,35,.55);
+  --panel-strong: rgba(26,30,41,.7);
+  --panel-border: rgba(255,255,255,.12);
+  --text: #e5e7eb;
+  --muted:#9aa6b2;
+  --map-fill: rgba(255,255,255,0.10);
+  --map-stroke: rgba(255,255,255,0.32);
 }
 
-/* Themes (you can toggle a .theme-xxx class on <html> if desired) */
-.theme-breeze{ --bg-grad: linear-gradient(135deg,#eaf5ff,#d8ecff 45%,#c9e4ff); --accent:#0ea5e9; --widget-tint:#eaf5ff; }
-:root.dark.theme-breeze{ --bg-grad: linear-gradient(135deg, #0b1722, #0b1c2a 50%, #0b2233); --widget-tint:#122133; }
-.theme-mint{ --bg-grad: linear-gradient(135deg,#e8fff6,#d7f8ee 45%,#c9f1e6); --accent:#10b981; --widget-tint:#e8fff6;}
-:root.dark.theme-mint{ --bg-grad: linear-gradient(135deg,#081a14,#0b2019 45%,#0e2720); --widget-tint:#0f211a; }
-.theme-sunset{ --bg-grad: linear-gradient(135deg,#ffe9e2,#ffd9c8 45%,#ffd0b8); --accent:#f97316; --widget-tint:#fff1eb;}
-:root.dark.theme-sunset{ --bg-grad: linear-gradient(135deg,#23120c,#2a160f 45%,#2f1a12); --widget-tint:#20130e; }
-.theme-grape{ --bg-grad: linear-gradient(135deg,#f3e8ff,#e9d5ff 45%,#e2c4ff); --accent:#8b5cf6; --widget-tint:#f5ecff; }
-:root.dark.theme-grape{ --bg-grad: linear-gradient(135deg,#180d26,#1d1030 45%,#22133a); --widget-tint:#1b1230; }
-.theme-slate{ --bg-grad: linear-gradient(135deg,#eef2f7,#e6ecf3 45%,#dde5ee); --accent:#64748b; --widget-tint:#eef2f7; }
-:root.dark.theme-slate{ --bg-grad: linear-gradient(135deg,#0e1116,#0f1319 45%,#121720); --widget-tint:#12161c; }
-
-/* ---------- Resets & basics ---------- */
+/* ---------- Base ---------- */
 *{ box-sizing: border-box; }
 html, body, #root{ height:100%; }
 html{ -webkit-text-size-adjust: 100%; }
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-  color: var(--text); background: var(--bg-grad);
+  color: var(--text);
+  background: var(--bg-grad);
 }
 a{ color: var(--accent); text-decoration:none; }
 img{ max-width:100%; display:block; }
 small,.small{ color: var(--muted); font-size:.86rem; }
+code{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
 
-/* ---------- Layout ---------- */
-.container{ max-width: var(--content-max); margin:0 auto; padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px); }
-.header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding: 8px 12px; border-radius: var(--radius); }
-.headerLeft{ display:flex; align-items:center; gap:10px; }
-.headerRight{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width: 320px; }
-.brand{ font-weight: 800; letter-spacing:.2px; }
-.layout{ display:grid; grid-template-columns: var(--sidebar-w) minmax(0,1fr); gap: 12px; }
-.content{ overflow: hidden; }
+/* ---------- Utilities ---------- */
+.flex{ display:flex; }
+.row{ display:grid; gap: var(--gutter); }
+.center{ display:flex; align-items:center; justify-content:center; }
 
-/* ---------- Glass ---------- */
+/* ---------- Glass cards / containers ---------- */
 .glass{
   backdrop-filter: blur(var(--glass-blur));
   background: var(--panel);
   border:1px solid var(--panel-border);
   border-radius: var(--radius);
   color: var(--text);
+  box-shadow: var(--shadow);
 }
 .card{ padding: 10px; border-radius: var(--radius); }
 
-/* ---------- Controls ---------- */
-.btn{
-  appearance:none; cursor:pointer; user-select:none;
-  border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
-  color: var(--text); min-height: var(--touch);
-  padding: 6px 10px; border-radius: 12px;
+/* ---------- Page frame ---------- */
+.container{
+  max-width: var(--content-max);
+  margin:0 auto;
+  padding: calc(env(safe-area-inset-top) + 10px) var(--gutter) calc(env(safe-area-inset-bottom) + 12px);
 }
-:root.dark .btn{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
-.btn:hover{ filter: brightness(1.03); }
-.btn:active{ transform: translateY(1px); }
-.btn:focus-visible{ outline:none; box-shadow: var(--focus-ring); }
-.btn.xs{ min-height: 30px; padding: 4px 8px; border-radius: 10px; }
-.btn.btn-primary{ background: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, black 0%); color:#fff; }
-.input{
-  width:100%; min-height: var(--touch); padding: 6px 9px; border-radius: 12px;
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; padding: 8px 12px; border-radius: var(--radius);
+}
+.headerRight{
+  display:flex; align-items:center; justify-content:flex-end;
+  gap:8px; flex-wrap:wrap; min-width:340px;
+}
+.layout{
+  display:grid; grid-template-columns: var(--sidebar-w) minmax(0,1fr);
+  gap: var(--gutter); margin-top: var(--gutter);
+}
+.content{
+  display:flex; flex-direction:column; gap: var(--gutter);
+  min-height: 70vh; /* avoids over-scroll on iPad */
+}
+
+/* ---------- Sidebar (one icon + label) ---------- */
+.sidebarNav{
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 10px);
+  align-self:start;
+  width: var(--sidebar-w);
+  overflow: clip;
+  padding: 8px;
+  display:flex; flex-direction:column; gap:10px;
+}
+.sidebarNav .brand{
+  padding: 10px; border-radius: 12px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.sidebarNav .brand .title{ font-weight:800; font-size:1rem; letter-spacing:.2px; }
+.sidebarNav .brand .subtitle{ opacity:.78; font-size:.8rem; }
+
+.sidebarNav .nav{ display:flex; flex-direction:column; gap:8px; }
+.navItem{
+  display:grid;
+  grid-template-columns: 28px 1fr; /* icon | label */
+  align-items:center; gap:8px;
+  padding: 10px; min-height: 42px;
+  border-radius: 12px; text-align:left; user-select:none;
+  cursor:pointer;
   border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 65%, white 35%);
+  background: var(--panel-strong);
   color: var(--text);
 }
-:root.dark .input{ background: color-mix(in srgb, var(--widget-tint) 26%, black 74%); }
-.input.xs{ min-height: 30px; padding: 4px 8px; }
-label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
+:root.dark .navItem{ background: var(--panel); }
+.navItem .navIcon{ font-size: 1.15rem; line-height:1; text-align:center; }
+.navItem .navLabel{ font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.navItem:hover{ filter: brightness(1.03); }
+.navItem.active{
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent) inset;
+}
+
+/* ---------- Controls ---------- */
+.btn{
+  appearance:none; cursor:pointer;
+  border:1px solid var(--panel-border);
+  background: var(--panel-strong);
+  color: var(--text);
+  min-height: var(--touch);
+  padding: 6px 12px; border-radius: 12px;
+}
+.btn:hover{ filter: brightness(1.03); }
+.btn:active{ transform: translateY(1px); }
+.btn.xs{ min-height: 30px; padding: 4px 8px; border-radius: 10px; font-size:.9rem; }
+
+.btn.btn-primary{
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, black 0%);
+  color:#fff;
+}
+.btn.btn-ghost{ background: transparent; border-color: transparent; }
+
+.input{
+  width:100%; min-height: var(--touch);
+  padding: 6px 10px; border-radius: 12px;
+  border:1px solid var(--panel-border);
+  background: var(--panel-strong);
+  color: var(--text);
+}
+.input.xs{ min-height: 30px; padding: 4px 8px; border-radius: 10px; }
+select.input{ padding-right: 30px; }
+
+/* Toggle switch for light/dark */
+.switch{
+  position: relative; width: 46px; height: 26px; border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  display:inline-flex; align-items:center; padding: 2px; cursor:pointer;
+  border: 1px solid var(--panel-border);
+}
+.switch .knob{
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #fff;
+  transform: translateX(0);
+  transition: transform .18s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,.2);
+}
+:root.dark .switch .knob{ background:#d1d5db; }
+.switch.on .knob{ transform: translateX(20px); }
+
+/* ---------- Badges / table ---------- */
 .badge{
   display:inline-flex; align-items:center; gap:6px;
   padding: 3px 8px; border-radius: 999px; font-size:.78rem;
@@ -108,317 +191,208 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
   border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
   color: var(--text);
 }
-.pill{ border-radius: 999px; padding:4px 8px; }
-
-/* ---------- Sidebar (icon + text) ---------- */
-.sidebarNav{
-  position: sticky; top:8px; align-self:start; height:fit-content;
-  width: var(--sidebar-w); overflow: clip;
-  padding: 8px; display:flex; flex-direction:column; gap:8px;
-}
-.sidebarNav .brand{ padding: 8px; border-radius: 12px; display:flex; align-items:center; justify-content:space-between; }
-.sidebarNav .brand .title{ font-weight:700; font-size:.98rem; }
-.sidebarNav .brand .subtitle{ opacity:.78; font-size:.78rem; }
-.sidebarNav .nav{ display:flex; flex-direction:column; gap:6px; }
-.sidebarNav .nav .navItem{
-  display:grid; grid-template-columns: 26px 1fr; /* icon | label */
-  align-items:center; gap:8px; padding: 9px; min-height: 40px;
-  border-radius: 12px; text-align:left; user-select:none; cursor:pointer;
-  border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 58%, white 42%);
-  color: var(--text);
-}
-:root.dark .sidebarNav .nav .navItem{ background: color-mix(in srgb, var(--widget-tint) 24%, black 76%); border-color: rgba(255,255,255,.12); }
-.sidebarNav .nav .navItem.active{
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent) inset;
-}
-.navIcon{ font-size: 1.18rem; line-height:1; text-align:center; }
-.navLabel{ font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-/* ---------- Profile ---------- */
-.avatar{ width:56px; height:56px; border-radius:50%; object-fit:cover; border:2px solid var(--panel-border); }
-.avatar.placeholder{ display:flex; align-items:center; justify-content:center; font-size:1.2rem; background: rgba(0,0,0,.05); }
-
-/* ---------- Overview (Weekly timetable) ---------- */
-.overviewPanel{ padding: 10px; }
-.overviewHeader{
-  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;
-}
-.ohLeft{ display:flex; align-items:center; gap:10px; }
-.ohTitle{ margin:0; }
-.ohShortcuts{ display:flex; flex-wrap:wrap; gap:6px; }
-.ohRight{ display:flex; align-items:center; gap:10px; }
-
-.weekShell{
-  display:grid; grid-template-columns: 220px repeat(5, 1fr);
-  gap:10px; align-items:start;
-}
-.timeCol{ padding: 10px; }
-.dayCol{ padding: 10px; }
-.timeHead, .dayHead{ font-weight:800; margin-bottom:8px; }
-.timeCell{
-  padding:8px; border-radius:12px; border:1px dashed var(--panel-border);
-  margin-bottom:6px; background: color-mix(in srgb, var(--widget-tint) 55%, white 45%);
-}
-.timeRange{ font-weight:700; }
-.timeLabel{ font-size:.86rem; color: var(--muted); }
-
-.dayCol{
-  display:grid; grid-template-rows: auto repeat(9, 1fr); gap:6px;
-}
-.slotCell{
-  border:1px solid var(--panel-border); border-radius:12px; padding:8px;
-  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
-}
-:root.dark .slotCell{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
-.slotCell.recess, .slotCell.lunch{ opacity:.95; }
-.slotMain{ min-width:0; }
-.slotTitle{ font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.slotMeta{ display:flex; align-items:center; gap:8px; color: var(--muted); }
-.slotTimes{ font-size:.86rem; color: var(--muted); white-space:nowrap; }
-.span2{ grid-row: span 2; }
-.strip{
-  display:flex; flex-direction:column; gap:6px;
-}
-.stripList{
-  display:flex; flex-wrap:wrap; gap:6px;
-}
-.chip{
-  padding:6px 10px; border-radius:999px; border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
-}
-
-/* ---------- Lunch (iPad split scroll, 4×4) ---------- */
-.lunchShell{
-  display:grid; grid-template-columns: 3fr 1fr;
-  gap:12px; padding:10px; border-radius:12px;
-  height: calc(100vh - 220px); min-height: 520px; overflow: hidden;
-}
-.lunchLeft{ min-width:0; overflow-y:auto; -webkit-overflow-scrolling: touch; padding-right:2px; }
-.lunchRight{ display:flex; flex-direction:column; min-width:0; overflow:hidden; }
-.lunchGridFixed{
-  display:grid; grid-template-columns: repeat(4, minmax(0,1fr));
-  grid-auto-rows: 155px; gap:8px; align-content:start;
-}
-.lunchCardCompact{ display:grid; grid-template-rows: 1fr auto auto; gap:6px; border-radius:12px; padding:8px; }
-.compactImgWrap{ width:100%; height:96px; overflow:hidden; border-radius:10px; }
-.compactImg{ width:100%; height:100%; object-fit:cover; display:block; }
-.compactMeta{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
-.compactTitle{ font-weight:700; font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.compactPrice{ font-size:.9rem; }
-.compactControls{ display:flex; align-items:center; justify-content:center; gap:8px; }
-.compactControls .qty{ width:24px; text-align:center; }
-.cartHeader{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
-.cartTitle{ font-weight:700; margin-bottom:4px; }
-.cartList{ overflow-y:auto; -webkit-overflow-scrolling: touch; flex:1; display:flex; flex-direction:column; gap:4px; padding-right:2px; min-height: 0; }
-.cartLineItem{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:6px 8px; border-radius:10px; border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%); font-size:.95rem;
-}
-:root.dark .cartLineItem{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
-.cartLineBtns{ display:flex; gap:6px; margin-left:8px; }
-.cartFooter{ display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:8px; }
-
-/* ---------- Map (subtle building bob) ---------- */
-.building{ transition: transform .2s ease, filter .2s ease; transform-origin: 50% 50%; }
-@keyframes bob{ 0%{transform:translateY(0)} 50%{transform:translateY(-0.5px)} 100%{transform:translateY(0)} }
-.building.selected{ animation: bob 1200ms ease-in-out infinite; }
-
-/* ---------- Tables ---------- */
 .table{ width:100%; border-collapse: collapse; }
 .table th, .table td{ padding:8px; border-bottom: 1px solid var(--panel-border); text-align:left; }
 .table tr:hover{ background: rgba(0,0,0,.03); }
 :root.dark .table tr:hover{ background: rgba(255,255,255,.05); }
 
-/* ---------- Footer ---------- */
-.footer{ padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
+/* =========================================================
+   OVERVIEW — Compact Mon–Fri timetable (no times column)
+   ========================================================= */
 
-/* ---------- Utility ---------- */
-.flex{ display:flex; align-items:center; gap:8px; }
-.hidden{ display:none !important; }
+.timetable{
+  display:grid; gap: var(--gutter);
+  grid-template-columns: repeat(5, 1fr); /* Mon–Fri */
+}
+.dayCard{
+  display:flex; flex-direction:column; gap:8px;
+  padding: 10px;
+}
+.dayHeader{
+  display:flex; align-items:center; justify-content:space-between;
+  font-weight:700; margin-bottom:2px;
+}
+.periodList{ display:flex; flex-direction:column; gap:6px; }
+.period{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:6px; padding: 8px 10px; border-radius: 10px;
+  border:1px solid var(--panel-border);
+  background: var(--panel-strong);
+  font-size:.92rem;
+}
+.period .meta{ color: var(--muted); font-size:.82rem; }
 
-/* ---------- Responsive ---------- */
+/* Compact shortcuts strip (overview) */
+.shortcuts{
+  display:grid; grid-template-columns: repeat(4,1fr);
+  gap: var(--gutter);
+}
+.shortcut{
+  display:flex; align-items:center; justify-content:center;
+  min-height: 60px; font-weight:600;
+}
+
+/* Upcoming list blocks */
+.upcomingList{ display:flex; flex-direction:column; gap:8px; }
+.upItem{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding: 8px 10px; border-radius: 10px;
+  border:1px solid var(--panel-border); background: var(--panel-strong);
+}
+
+/* =========================================================
+   LUNCH — 2-column layout: Menu grid (left) + Cart (right)
+   4×4 fixed grid on iPad wide; responsive down on smaller widths
+   ========================================================= */
+
+.lunchLayout{
+  display:grid; gap: var(--gutter);
+  grid-template-columns: 1fr 320px; /* left / right */
+}
 @media (max-width: 1200px){
-  :root{ --sidebar-w: 180px; }
+  .lunchLayout{ grid-template-columns: 1fr; }
+}
+
+.menuGrid{
+  display:grid; gap: 10px;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+}
+@media (max-width: 1500px){
+  .menuGrid{ grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 980px){
-  .layout{ grid-template-columns: 1fr; }
-  .sidebarNav{ position:relative; width:auto; }
-  .lunchShell{ grid-template-columns: 1fr; height: auto; min-height: 600px; }
-  .lunchRight{ margin-top: 8px; }
+  .menuGrid{ grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px){
-  .lunchGridFixed{ grid-template-columns: repeat(2, 1fr); grid-auto-rows: 160px; }
-}
-/* --- Collapsible sidebar refinements --- */
-.sidebarNav.is-collapsed .brand {
-  justify-content: center;
-  padding: 8px;
-}
-.sidebarNav.is-collapsed .brand .title,
-.sidebarNav.is-collapsed .brand .subtitle {
-  display: none;
+  .menuGrid{ grid-template-columns: 1fr; }
 }
 
-.sidebarNav.is-collapsed .nav .navItem {
-  grid-template-columns: 1fr; /* icon only */
-  justify-items: center;
-  padding: 10px 8px;
+.lunchCard{
+  display:flex; flex-direction:column; overflow:hidden;
+  border-radius: 12px; border:1px solid var(--panel-border);
+  background: var(--panel-strong);
+  min-height: 220px;
 }
-.sidebarNav.is-collapsed .nav .navItem .navLabel { display: none; }
-.sidebarNav.is-collapsed .nav .navItem .navIcon { font-size: 1.25rem; }
-
-@media (max-width: 980px){
-  /* Auto-collapse on small screens (optional – remove if you don't want this) */
-  :root { --sidebar-w: 64px; }
-  .sidebarNav:not(.is-collapsed) {
-    /* If you want it forced collapsed on small screens, add class: is-collapsed */
-  }
+.lunchImgWrap{
+  position:relative; width:100%; height:140px; overflow:hidden;
+  background: linear-gradient(135deg,#e5e7eb,#f3f4f6);
 }
-/* --- Compact Overview (no Times column, iPad fit) --- */
-.overviewCompact{ padding:10px; display:flex; flex-direction:column; gap:10px; }
-.ovHeader{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.ovLeft{ display:flex; align-items:center; gap:10px; }
-.ovTitle{ margin:0; font-size:1.1rem; }
-.ovShortcuts{ display:flex; gap:6px; flex-wrap:wrap; }
-.ovRight{ display:flex; align-items:center; gap:10px; }
-.avatar{ width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--panel-border); }
-.avatar.placeholder{ display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.05); }
-
-.weekCompact{
-  /* 5 equal columns (Mon–Fri), each column hosts a 9-row grid */
-  display:grid; grid-template-columns: repeat(5, 1fr); gap:8px;
+:root.dark .lunchImgWrap{ background: linear-gradient(135deg,#1f2432,#232a3a); }
+.lunchImg{
+  width:100%; height:100%; object-fit:cover; display:block;
 }
-
-/* Column header + 9 compact slots in a small grid that fills available height */
-.dayColC{ padding:8px; }
-.dayHeadC{ font-weight:800; margin-bottom:6px; text-align:center; }
-
-/* Inner grid: 9 rows, short row height so whole week fits */
-.dayGridC{
-  display:grid;
-  grid-auto-rows: 48px; /* compact cell height; doubles will span to 96px */
-  gap:6px;
+.lunchBody{
+  display:flex; flex-direction:column; gap:8px;
+  padding: 10px;
 }
-
-.slotC{
-  border:1px solid var(--panel-border);
-  border-radius:10px;
-  background: color-mix(in srgb, var(--widget-tint) 62%, white 38%);
-  padding:6px 8px;
-  display:grid;
-  grid-template-rows: auto auto auto;
-  align-content:center;
-  row-gap:2px;
-  font-size:.85rem;
+.lunchRow{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
 }
-:root.dark .slotC{ background: color-mix(in srgb, var(--widget-tint) 28%, black 72%); }
-
-.slotC.recess, .slotC.lunch{ opacity:.95; }
-
-.slotTop{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
-.slotTitleC{
-  font-weight:700;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+.price{ font-weight:700; }
+.qtyCtrl{
+  display:inline-flex; align-items:center; gap:8px;
+  border:1px solid var(--panel-border); border-radius: 999px;
+  padding: 2px 6px; background: var(--panel);
 }
-.slotMetaC{ color: var(--muted); font-size:.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.slotTimeMini{ color: var(--muted); font-size:.74rem; justify-self:end; }
-
-.span2{ grid-row: span 2; } /* double = two rows high (96px) */
-
-/* Upcoming strips: single line, horizontal scroll if overflow */
-.ovStrips{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-.stripC{ display:flex; flex-direction:column; gap:6px; }
-.stripFlow{
-  display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling: touch;
-  padding-bottom:2px;
+.qtyBtn{
+  appearance:none; border:0; background:transparent; cursor:pointer; font-size:1.1rem;
+  line-height:1; padding: 2px 4px;
 }
-.chip{
-  padding:4px 10px; border-radius:999px;
-  border:1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--widget-tint) 60%, white 40%);
-  font-size:.83rem;
+.qtyNum{ min-width: 20px; text-align:center; font-weight:700; }
+
+/* Cart panel (right) */
+.cartPanel{
+  position: sticky; top: calc(env(safe-area-inset-top) + 64px);
+  display:flex; flex-direction:column; gap:10px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 10px;
+}
+.cartHeader{
+  display:flex; align-items:center; justify-content:space-between;
+}
+.cartList{ display:flex; flex-direction:column; gap:6px; }
+.cartItem{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding: 8px 10px; border-radius: 10px; border:1px solid var(--panel-border);
+  background: var(--panel);
+  font-size:.95rem;
+}
+.cartTotal{
+  display:flex; align-items:center; justify-content:flex-end; gap:10px;
+  font-weight:800; font-size:1.05rem; padding-top:4px;
+}
+.btn-order{ margin-left: 6px; } /* “just a smidge” right of total */
+
+/* Wallet pill used in Lunch header or topbar */
+.pill{
+  padding: 6px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+  font-weight: 700;
 }
 
-/* Slightly smaller UI on narrower screens */
-@media (max-width: 1200px){
-  .dayGridC{ grid-auto-rows: 46px; }
-  .slotC{ font-size:.82rem; }
-  .slotTimeMini{ font-size:.72rem; }
-}
-
-@media (max-width: 980px){
-  /* Stack week into a horizontal scroller if needed */
-  .weekCompact{
-    grid-template-columns: repeat(5, minmax(160px, 1fr));
-    overflow-x:auto; -webkit-overflow-scrolling: touch;
-  }
-  .ovStrips{ grid-template-columns: 1fr; }
-}
-/* --- Lunch hardening: keep buttons and images inside the card --- */
-.lunchShell{
-  display:grid; grid-template-columns: 3fr 1fr;
-  gap:12px; padding:10px; border-radius:12px;
-  height: calc(100vh - 220px);
-  min-height: 520px;
-  overflow: hidden;                 /* columns scroll internally */
-}
-.lunchLeft{
-  min-width:0; overflow-y:auto; -webkit-overflow-scrolling: touch;
-  padding-right: 2px;
-}
-.lunchRight{
-  display:flex; flex-direction:column; min-width:0; overflow:hidden;
-}
-
-.lunchGridFixed{
-  display:grid; grid-template-columns: repeat(4, minmax(0,1fr));
-  grid-auto-rows: 172px;            /* a touch taller so controls fit comfortably */
-  gap:8px; align-content:start;
-}
-
-.lunchCardCompact{
-  display:grid;
-  grid-template-rows: 96px auto auto;  /* image | meta | controls */
-  gap:6px; border-radius:12px; padding:8px;
-  overflow:hidden;                     /* keep content in bounds */
-}
-
-.compactImgWrap{ width:100%; height:96px; overflow:hidden; border-radius:10px; }
-.compactImg{ width:100%; height:100%; object-fit:cover; display:block; }
-
-.compactMeta{
-  display:flex; align-items:center; justify-content:space-between; gap:6px;
-  min-height: 28px;
-}
-.compactTitle{ font-weight:700; font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.compactPrice{ font-size:.9rem; }
-
-.compactControls{
-  display:flex; align-items:center; justify-content:center; gap:10px;
-  padding-top: 2px;
-}
-.compactControls .btn.xs{ line-height: 1; }
-.compactControls .qty{ width:26px; text-align:center; font-weight:700; }
-
-/* Cart tidy scroll */
-.cartList{
-  overflow-y:auto; -webkit-overflow-scrolling: touch;
-  flex:1; display:flex; flex-direction:column; gap:4px; padding-right:2px; min-height:0;
-}
-/* Map overlay polish */
-.building { transition: transform .2s ease, filter .2s ease; transform-origin: 50% 50%; }
+/* =========================================================
+   MAP — Subtle highlight & bob
+   ========================================================= */
+.building{ transition: transform .2s ease, filter .2s ease; transform-origin: 50% 50%; }
 @keyframes bob { 0%{transform:translateY(0)} 50%{transform:translateY(-0.5px)} 100%{transform:translateY(0)} }
 .building.selected { animation: bob 1200ms ease-in-out infinite; }
-/* Auto-detect panel sliders */
-.autoPanel input[type="range"]{
-  vertical-align: middle;
-  margin-left: 6px;
+
+/* =========================================================
+   PROFILE — Avatar, form layout
+   ========================================================= */
+.avatarBox{ display:flex; align-items:center; justify-content:center; margin-bottom:8px; }
+.avatar{ width:100px; height:100px; border-radius:50%; object-fit:cover; border:2px solid var(--panel-border); }
+.profileGrid{
+  display:grid; gap:10px;
+  grid-template-columns: repeat(2, 1fr);
 }
-/* Map highlight remains subtle & professional */
-.building { transition: transform .2s ease, filter .2s ease; transform-origin: 50% 50%; }
-@keyframes bob { 0%{transform:translateY(0)} 50%{transform:translateY(-0.5px)} 100%{transform:translateY(0)} }
-.building.selected { animation: bob 1200ms ease-in-out infinite; }
+@media (max-width: 980px){ .profileGrid{ grid-template-columns: 1fr; } }
+
+/* =========================================================
+   BULLETIN / APPOINTMENTS / CALENDAR PANELS
+   ========================================================= */
+.blockList{ display:flex; flex-direction:column; gap:8px; }
+.blockItem{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+  padding:10px; border:1px solid var(--panel-border); border-radius: 12px;
+  background: var(--panel-strong);
+}
+
+/* =========================================================
+   FORMS / MODALS
+   ========================================================= */
+.modal{
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(0,0,0,.25);
+}
+.modalBody{
+  width:min(900px, 92vw);
+  max-height: 80vh; overflow:auto; -webkit-overflow-scrolling: touch;
+  padding:10px; border-radius: var(--radius);
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+.footer{
+  padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
+  opacity:.8; font-size:.9rem; text-align:center;
+}
+
+/* =========================================================
+   RESPONSIVE TWEAKS (keep iPad full layout)
+   ========================================================= */
+@media (max-width: 1280px){
+  :root{ --sidebar-w: 188px; }
+}
+@media (max-width: 1024px){ /* fallback to single column days if needed */
+  .timetable{ grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 700px){
+  .layout{ grid-template-columns: 1fr; }
+  .sidebarNav{ position: static; width: 100%; }
+  .timetable{ grid-template-columns: 1fr; }
+}

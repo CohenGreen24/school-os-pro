@@ -2,11 +2,10 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-/** ✅ Your public map URL + a tiny cache-buster.
- *  Update MAP_VER when you change the image (e.g. bump to 'v2').
- *  This fixes "updated on iPad but not PC" due to CDN caching.
+/** ✅ Your public map URL + cache-buster.
+ * Bump MAP_VER when you upload / swap the image (e.g., 'v2', 'v3').
  */
-const MAP_VER = 'v1'  // <-- bump to 'v2', 'v3' whenever you upload a new map
+const MAP_VER = 'v3'
 const MAP_BASE = 'https://awxltfgbgnylacrklmik.supabase.co/storage/v1/object/public/maps/campus-map.png'
 const MAP_URL = `${MAP_BASE}?${MAP_VER}`
 
@@ -26,7 +25,7 @@ function buildingFromClass(codeRaw='') {
 function normPoint(x, y, w, h) { return [x / w, y / h] }
 function denormPoint(nx, ny, w, h) { return [nx * w, ny * h] }
 
-/** Wait for OpenCV to be ready (loaded via <script>) */
+/** Wait for OpenCV (loaded via <script>) */
 function useOpenCV() {
   const [ready, setReady] = React.useState(false)
   React.useEffect(() => {
@@ -48,12 +47,11 @@ export default function MapPanel({ user }) {
 
   const isStaff = user?.role && user.role !== 'student'
 
-  // Simple per-building workflow
+  // Workflow: choose building → Auto Detect → single click in map → Save
   const [currentBuilding, setCurrentBuilding] = React.useState('Building A')
-  const [autoMode, setAutoMode] = React.useState(false)       // Auto detect toggle
-  const [edgeSens, setEdgeSens] = React.useState(140)         // Canny high (low=high/2)
-  const [invert, setInvert] = React.useState(false)           // for maps where buildings are darker/lighter
-  const [previewPts, setPreviewPts] = React.useState(null)    // [[x,y],...] in rendered px
+  const [autoMode, setAutoMode] = React.useState(false)
+  const [invert, setInvert] = React.useState(false)            // For maps with dark/light flipped
+  const [previewPts, setPreviewPts] = React.useState(null)     // [[x,y],...] in rendered px
 
   const [imgOk, setImgOk] = React.useState(true)
   const imgRef = React.useRef(null)
@@ -73,7 +71,7 @@ export default function MapPanel({ user }) {
   const onImgLoad = () => setImgOk(true)
   const onImgErr  = () => setImgOk(false)
 
-  // Convert stored normalized coords → current px
+  // Normalize helpers
   const toPixels = (normPts) => {
     const img = imgRef.current
     if (!img || !normPts?.length) return []
@@ -104,17 +102,24 @@ export default function MapPanel({ user }) {
     if (b) setSelected(b)
   }
 
-  /** ---------- Robust one-click detector ----------
-   * Strategy:
-   *  1) Rendered image → gray → optional invert → light blur.
-   *  2) Try Canny edges (low=high/2). If no contour contains the click,
-   *     fallback to Adaptive Threshold (binary) to find shapes with weak edges.
-   *  3) Among contours that contain the click, choose the largest by area.
-   *  4) Simplify with approxPolyDP and preview.
-   */
-  const detectAtPoint = (x, y) => {
+  // ---------- Robust single-click detection ----------
+  const onMapPointerDown = (e) => {
+    if (!autoMode || !cvReady) return
+    const svg = svgRef.current
+    if (!svg) return
+
+    const pt = ('clientX' in e) ? e : (e.touches ? e.touches[0] : null)
+    if (!pt) return
+    const rect = svg.getBoundingClientRect()
+    const x = pt.clientX - rect.left
+    const y = pt.clientY - rect.top
+
+    detectAtPoint(x, y)
+  }
+
+  function detectAtPoint(x, y) {
     const img = imgRef.current
-    if (!img || !cvReady) return false
+    if (!img) return false
 
     const rW = img.clientWidth, rH = img.clientHeight
     const canvas = document.createElement('canvas')
@@ -126,104 +131,134 @@ export default function MapPanel({ user }) {
     let src = cv.imread(canvas)
     let gray = new cv.Mat()
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
-
-    // Optional invert: some maps have dark buildings on light background or vice versa
     if (invert) cv.bitwise_not(gray, gray)
 
-    // A little blur smooths noise
-    let blur = new cv.Mat()
-    cv.GaussianBlur(gray, blur, new cv.Size(3,3), 0, 0)
-
-    // -------- attempt 1: Canny
-    const high = Math.max(40, Math.min(220, Number(edgeSens)))
-    const low  = Math.floor(high / 2)
-    let edges = new cv.Mat()
-    cv.Canny(blur, edges, low, high)
-
-    const found1 = findContourContainingPoint(cv, edges, x, y, true /*isEdge*/)
-
-    // -------- attempt 2: Adaptive Threshold (fallback when edges are faint)
-    let found = found1
-    if (!found1) {
-      let bin = new cv.Mat()
-      // Mean adaptive is more forgiving across lighting variations
-      cv.adaptiveThreshold(blur, bin, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 15, 2)
-      // Post-process: close small gaps so contours are closed
-      let kernel = cv.Mat.ones(3,3, cv.CV_8U)
-      cv.morphologyEx(bin, bin, cv.MORPH_CLOSE, kernel)
-      found = findContourContainingPoint(cv, bin, x, y, false /*binary*/)
-      kernel.delete(); bin.delete()
+    // Smart order: 1) Region grow (best for filled buildings) with several tolerances
+    const tolerances = [12, 18, 24, 32]  // brightness diff
+    for (const tol of tolerances) {
+      const poly = tryRegionGrow(cv, gray, x, y, tol)
+      if (poly) { setPreviewPts(poly); cleanup(); return true }
     }
 
-    gray.delete(); blur.delete(); edges.delete(); src.delete()
-
-    if (found && found.length >= 3) {
-      setPreviewPts(found)
-      return true
+    // 2) Canny edges (thicken → contours)
+    {
+      const poly = tryCanny(cv, gray)
+      if (poly && containsPoint(poly, x, y)) { setPreviewPts(poly); cleanup(); return true }
     }
+
+    // 3) Adaptive threshold + morphology
+    {
+      const poly = tryAdaptive(cv, gray)
+      if (poly && containsPoint(poly, x, y)) { setPreviewPts(poly); cleanup(); return true }
+    }
+
+    cleanup()
+    alert('Could not detect a shape at that point. Try toggling “Invert” and click slightly closer to the interior border.')
     return false
+
+    function cleanup() { gray.delete(); src.delete() }
   }
 
-  /** Find the largest contour that contains (x,y). Returns simplified pts (px) or null. */
-  function findContourContainingPoint(cv, mat, x, y, isEdgeMask) {
-    let input = mat
-    // If we got an edge image, convert edges to filled contours by dilating a touch
+  function containsPoint(polyPts, x, y) {
+    // Ray casting; simple check
+    let inside = false
+    for (let i = 0, j = polyPts.length - 1; i < polyPts.length; j = i++) {
+      const xi = polyPts[i][0], yi = polyPts[i][1]
+      const xj = polyPts[j][0], yj = polyPts[j][1]
+      const intersect = ((yi > y) !== (yj > y)) &&
+                        (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi)
+      if (intersect) inside = !inside
+    }
+    return inside
+  }
+
+  function tryRegionGrow(cv, gray, x, y, tol=18) {
+    // Make a copy for floodFill
+    let src8 = new cv.Mat()
+    gray.copyTo(src8)
+
+    // Flood fill on a mask; we’ll capture the filled region
+    let mask = new cv.Mat.zeros(gray.rows + 2, gray.cols + 2, cv.CV_8U) // +2 padding is required
+    const seed = new cv.Point(Math.round(x), Math.round(y))
+    const lo = new cv.Scalar(tol, tol, tol, 0)
+    const hi = new cv.Scalar(tol, tol, tol, 0)
+    const flags = 4 | (255 << 8) // 4-connectivity, new color = 255
+
+    try {
+      cv.floodFill(src8, mask, seed, new cv.Scalar(255,255,255,255), new cv.Rect(), lo, hi, flags)
+      // Remove the +2 padding
+      const roi = new cv.Rect(1,1, mask.cols-2, mask.rows-2)
+      let bin = mask.roi(roi)
+
+      // Clean edges: close small gaps
+      let kernel = cv.Mat.ones(3,3, cv.CV_8U)
+      cv.morphologyEx(bin, bin, cv.MORPH_CLOSE, kernel)
+
+      const poly = contourToPoly(cv, bin, true)
+      kernel.delete(); src8.delete(); mask.delete()
+      return poly
+    } catch {
+      src8.delete(); mask.delete()
+      return null
+    }
+  }
+
+  function tryCanny(cv, gray) {
+    let blur = new cv.Mat()
+    cv.GaussianBlur(gray, blur, new cv.Size(3,3), 0, 0)
+    let edges = new cv.Mat()
+    cv.Canny(blur, edges, 70, 160)
+    const poly = contourToPoly(cv, edges, true) // edge mask → dilate within helper
+    blur.delete(); edges.delete()
+    return poly
+  }
+
+  function tryAdaptive(cv, gray) {
+    let bin = new cv.Mat()
+    cv.adaptiveThreshold(gray, bin, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 15, 2)
+    let kernel = cv.Mat.ones(3,3, cv.CV_8U)
+    cv.morphologyEx(bin, bin, cv.MORPH_CLOSE, kernel)
+    const poly = contourToPoly(cv, bin, false)
+    kernel.delete(); bin.delete()
+    return poly
+  }
+
+  function contourToPoly(cv, maskOrEdges, isEdgeImage) {
+    let work = maskOrEdges
     let temp = null
-    if (isEdgeMask) {
+    if (isEdgeImage) {
       temp = new cv.Mat()
       const k = cv.Mat.ones(3,3, cv.CV_8U)
-      cv.dilate(mat, temp, k)  // thicken edges so contours are easier to close
+      cv.dilate(maskOrEdges, temp, k) // thicken edges so contours close
       k.delete()
-      input = temp
+      work = temp
     }
 
     let contours = new cv.MatVector()
     let hierarchy = new cv.Mat()
-    cv.findContours(input, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    cv.findContours(work, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
     let bestIdx = -1, bestArea = 0
     for (let i = 0; i < contours.size(); i++) {
-      const cnt = contours.get(i)
-      const inside = cv.pointPolygonTest(cnt, new cv.Point(x, y), false)
-      if (inside >= 0) {
-        const area = cv.contourArea(cnt)
-        if (area > bestArea) { bestArea = area; bestIdx = i }
-      }
+      const area = cv.contourArea(contours.get(i))
+      if (area > bestArea) { bestArea = area; bestIdx = i }
+    }
+    if (bestIdx < 0) { hierarchy.delete(); contours.delete(); if (temp) temp.delete(); return null }
+
+    const cnt = contours.get(bestIdx)
+    const peri = cv.arcLength(cnt, true)
+    const eps  = Math.max(1, 0.015 * peri)
+    let approx = new cv.Mat()
+    cv.approxPolyDP(cnt, approx, eps, true)
+
+    const pts = []
+    for (let i = 0; i < approx.rows; i++) {
+      const p = approx.intPtr(i)
+      pts.push([p[0], p[1]])
     }
 
-    let result = null
-    if (bestIdx >= 0) {
-      const cnt = contours.get(bestIdx)
-      const peri = cv.arcLength(cnt, true)
-      const eps  = Math.max(1, 0.015 * peri)  // 1.5% simplification looks neat
-      let approx = new cv.Mat()
-      cv.approxPolyDP(cnt, approx, eps, true)
-      const pts = []
-      for (let i = 0; i < approx.rows; i++) {
-        const p = approx.intPtr(i)
-        pts.push([p[0], p[1]])
-      }
-      approx.delete()
-      result = pts
-    }
-
-    hierarchy.delete(); contours.delete()
-    if (temp) temp.delete()
-    return result
-  }
-
-  const onMapClick = (e) => {
-    if (!autoMode || !cvReady) return
-    const svg = svgRef.current
-    if (!svg) return
-    const rect = svg.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-
-    const ok = detectAtPoint(x, y)
-    if (!ok) {
-      alert('Could not detect a closed shape at that point. Toggle “Invert”, or adjust sensitivity, then click again closer to the interior border.')
-    }
+    approx.delete(); hierarchy.delete(); contours.delete(); if (temp) temp.delete()
+    return pts
   }
 
   const savePreviewToBuilding = async () => {
@@ -254,7 +289,7 @@ export default function MapPanel({ user }) {
     <div className="glass card" style={{ padding: 10 }}>
       {/* Top controls */}
       <div className="flex" style={{ justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:8 }}>
-        {/* Quick finder (unchanged) */}
+        {/* Quick finder (for students) */}
         <form className="flex" onSubmit={(e)=>{e.preventDefault(); const b=buildingFromClass(search); if(b) setSelected(b)}} style={{ gap:8 }}>
           <input
             className="input"
@@ -273,7 +308,7 @@ export default function MapPanel({ user }) {
               className="input xs"
               value={currentBuilding}
               onChange={e=>setCurrentBuilding(e.target.value)}
-              title="Select building to save into"
+              title="Save outline into"
             >
               <option>Building A</option>
               <option>Building B</option>
@@ -292,16 +327,7 @@ export default function MapPanel({ user }) {
               {autoMode ? '✅ Auto Detect On' : '✨ Auto Detect'}
             </button>
 
-            <label className="small" title="Higher = finds more edges">
-              Sensitivity: {edgeSens}
-              <input
-                type="range" min="60" max="220" step="5"
-                value={edgeSens} onChange={e=>setEdgeSens(e.target.value)}
-                style={{ verticalAlign:'middle', marginLeft: 8 }}
-              />
-            </label>
-
-            <label className="small" title="Toggle if your buildings are darker/lighter than background">
+            <label className="small" title="Toggle if your buildings are darker/lighter">
               Invert
               <input type="checkbox" checked={invert} onChange={e=>setInvert(e.target.checked)} style={{ marginLeft:6 }} />
             </label>
@@ -330,17 +356,19 @@ export default function MapPanel({ user }) {
           ref={imgRef}
           src={MAP_URL}
           alt="School map"
+          crossOrigin="anonymous"
           onLoad={onImgLoad}
           onError={onImgErr}
           style={{ width:'100%', height:'auto', display:'block', userSelect:'none' }}
         />
         <svg
           ref={svgRef}
-          onClick={onMapClick}
+          onPointerDown={onMapPointerDown}
           style={{
             position:'absolute', inset:0, width:'100%', height:'100%',
             pointerEvents: autoMode ? 'auto' : 'none',
-            cursor: autoMode ? 'crosshair' : 'default'
+            cursor: autoMode ? 'crosshair' : 'default',
+            touchAction: 'none'
           }}
         >
           {/* Saved polygons */}
@@ -386,12 +414,12 @@ export default function MapPanel({ user }) {
       {isStaff && (
         <div className="small" style={{ marginTop:8, opacity:.8 }}>
           {autoMode
-            ? <>Click <b>inside</b> the {currentBuilding} shape. If it doesn’t snap, toggle <b>Invert</b> or adjust <b>Sensitivity</b>, then click again.</>
-            : <>Choose a building → click <b>Auto Detect</b> → click inside the building to outline & save.</>}
+            ? <>Click <b>inside</b> the {currentBuilding} shape. If it doesn’t snap, toggle <b>Invert</b> and click again near an interior edge.</>
+            : <>Choose a building → click <b>Auto Detect</b> → click once inside the building to outline & save.</>}
         </div>
       )}
 
-      {/* Quick select for students/admins */}
+      {/* Quick select for everyone */}
       <div className="flex" style={{ marginTop:8, flexWrap:'wrap', gap:6 }}>
         {['Building A','Building B','Building C','Technologies','Administration','Sports'].map(n=>(
           <button key={n} className="btn xs" onClick={()=>setSelected(n)}>{n}</button>
