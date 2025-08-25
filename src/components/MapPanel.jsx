@@ -2,8 +2,13 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-/** ✅ Your public map URL */
-const MAP_URL = 'https://awxltfgbgnylacrklmik.supabase.co/storage/v1/object/public/maps/campus-map.png'
+/** ✅ Your public map URL + a tiny cache-buster.
+ *  Update MAP_VER when you change the image (e.g. bump to 'v2').
+ *  This fixes "updated on iPad but not PC" due to CDN caching.
+ */
+const MAP_VER = 'v1'  // <-- bump to 'v2', 'v3' whenever you upload a new map
+const MAP_BASE = 'https://awxltfgbgnylacrklmik.supabase.co/storage/v1/object/public/maps/campus-map.png'
+const MAP_URL = `${MAP_BASE}?${MAP_VER}`
 
 /** Class code → building name */
 function buildingFromClass(codeRaw='') {
@@ -27,7 +32,6 @@ function useOpenCV() {
   React.useEffect(() => {
     let mounted = true
     const tick = () => {
-      // opencv.js signals onRuntimeInitialized, but polling is simple & robust here
       if (window.cv && window.cv.Mat) { mounted && setReady(true) }
       else setTimeout(tick, 120)
     }
@@ -46,9 +50,10 @@ export default function MapPanel({ user }) {
 
   // Simple per-building workflow
   const [currentBuilding, setCurrentBuilding] = React.useState('Building A')
-  const [autoMode, setAutoMode] = React.useState(false)         // “Auto Detect” on/off
-  const [edgeSens, setEdgeSens] = React.useState(120)           // Canny high threshold (low = high/2)
-  const [previewPts, setPreviewPts] = React.useState(null)      // [[x,y], ...] in rendered px
+  const [autoMode, setAutoMode] = React.useState(false)       // Auto detect toggle
+  const [edgeSens, setEdgeSens] = React.useState(140)         // Canny high (low=high/2)
+  const [invert, setInvert] = React.useState(false)           // for maps where buildings are darker/lighter
+  const [previewPts, setPreviewPts] = React.useState(null)    // [[x,y],...] in rendered px
 
   const [imgOk, setImgOk] = React.useState(true)
   const imgRef = React.useRef(null)
@@ -91,109 +96,133 @@ export default function MapPanel({ user }) {
     }
     return [0,0]
   }
-
   const renderPolys = areas.map(a => ({ ...a, pix: toPixels(a.points || []) }))
 
-  /* ------------------------------------------------------------------
-     AUTO-DETECT: Click inside a building → detect black-edge contour
-     Algorithm:
-      1) Draw the rendered <img> to a canvas sized to rendered pixels.
-      2) Canny edge detection (low=high/2).
-      3) Find all external contours.
-      4) Pick the contour whose polygon contains the click point; if
-         several, choose the largest by area (most building-like).
-      5) Approximate polygon (approxPolyDP) for neatness.
-      6) Preview (cyan). “Save to Building” commits to DB (normalized).
-  ------------------------------------------------------------------- */
+  const onSearchGo = (e) => {
+    e.preventDefault()
+    const b = buildingFromClass(search)
+    if (b) setSelected(b)
+  }
+
+  /** ---------- Robust one-click detector ----------
+   * Strategy:
+   *  1) Rendered image → gray → optional invert → light blur.
+   *  2) Try Canny edges (low=high/2). If no contour contains the click,
+   *     fallback to Adaptive Threshold (binary) to find shapes with weak edges.
+   *  3) Among contours that contain the click, choose the largest by area.
+   *  4) Simplify with approxPolyDP and preview.
+   */
+  const detectAtPoint = (x, y) => {
+    const img = imgRef.current
+    if (!img || !cvReady) return false
+
+    const rW = img.clientWidth, rH = img.clientHeight
+    const canvas = document.createElement('canvas')
+    canvas.width = rW; canvas.height = rH
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(img, 0, 0, rW, rH)
+
+    const cv = window.cv
+    let src = cv.imread(canvas)
+    let gray = new cv.Mat()
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
+
+    // Optional invert: some maps have dark buildings on light background or vice versa
+    if (invert) cv.bitwise_not(gray, gray)
+
+    // A little blur smooths noise
+    let blur = new cv.Mat()
+    cv.GaussianBlur(gray, blur, new cv.Size(3,3), 0, 0)
+
+    // -------- attempt 1: Canny
+    const high = Math.max(40, Math.min(220, Number(edgeSens)))
+    const low  = Math.floor(high / 2)
+    let edges = new cv.Mat()
+    cv.Canny(blur, edges, low, high)
+
+    const found1 = findContourContainingPoint(cv, edges, x, y, true /*isEdge*/)
+
+    // -------- attempt 2: Adaptive Threshold (fallback when edges are faint)
+    let found = found1
+    if (!found1) {
+      let bin = new cv.Mat()
+      // Mean adaptive is more forgiving across lighting variations
+      cv.adaptiveThreshold(blur, bin, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 15, 2)
+      // Post-process: close small gaps so contours are closed
+      let kernel = cv.Mat.ones(3,3, cv.CV_8U)
+      cv.morphologyEx(bin, bin, cv.MORPH_CLOSE, kernel)
+      found = findContourContainingPoint(cv, bin, x, y, false /*binary*/)
+      kernel.delete(); bin.delete()
+    }
+
+    gray.delete(); blur.delete(); edges.delete(); src.delete()
+
+    if (found && found.length >= 3) {
+      setPreviewPts(found)
+      return true
+    }
+    return false
+  }
+
+  /** Find the largest contour that contains (x,y). Returns simplified pts (px) or null. */
+  function findContourContainingPoint(cv, mat, x, y, isEdgeMask) {
+    let input = mat
+    // If we got an edge image, convert edges to filled contours by dilating a touch
+    let temp = null
+    if (isEdgeMask) {
+      temp = new cv.Mat()
+      const k = cv.Mat.ones(3,3, cv.CV_8U)
+      cv.dilate(mat, temp, k)  // thicken edges so contours are easier to close
+      k.delete()
+      input = temp
+    }
+
+    let contours = new cv.MatVector()
+    let hierarchy = new cv.Mat()
+    cv.findContours(input, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    let bestIdx = -1, bestArea = 0
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i)
+      const inside = cv.pointPolygonTest(cnt, new cv.Point(x, y), false)
+      if (inside >= 0) {
+        const area = cv.contourArea(cnt)
+        if (area > bestArea) { bestArea = area; bestIdx = i }
+      }
+    }
+
+    let result = null
+    if (bestIdx >= 0) {
+      const cnt = contours.get(bestIdx)
+      const peri = cv.arcLength(cnt, true)
+      const eps  = Math.max(1, 0.015 * peri)  // 1.5% simplification looks neat
+      let approx = new cv.Mat()
+      cv.approxPolyDP(cnt, approx, eps, true)
+      const pts = []
+      for (let i = 0; i < approx.rows; i++) {
+        const p = approx.intPtr(i)
+        pts.push([p[0], p[1]])
+      }
+      approx.delete()
+      result = pts
+    }
+
+    hierarchy.delete(); contours.delete()
+    if (temp) temp.delete()
+    return result
+  }
+
   const onMapClick = (e) => {
     if (!autoMode || !cvReady) return
     const svg = svgRef.current
-    const img = imgRef.current
-    if (!svg || !img) return
-
+    if (!svg) return
     const rect = svg.getBoundingClientRect()
     const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
     const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
 
-    try {
-      const rW = img.clientWidth, rH = img.clientHeight
-
-      // Draw rendered image to canvas
-      const canvas = document.createElement('canvas')
-      canvas.width = rW; canvas.height = rH
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      ctx.drawImage(img, 0, 0, rW, rH)
-
-      const cv = window.cv
-      let src = cv.imread(canvas)
-      let gray = new cv.Mat()
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
-
-      // Slight blur then edges
-      let blur = new cv.Mat()
-      cv.GaussianBlur(gray, blur, new cv.Size(3,3), 0, 0)
-
-      const high = Math.max(30, Math.min(255, Number(edgeSens)))
-      const low  = Math.floor(high / 2)
-      let edges = new cv.Mat()
-      cv.Canny(blur, edges, low, high)
-
-      // Find contours
-      let contours = new cv.MatVector()
-      let hierarchy = new cv.Mat()
-      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-      if (contours.size() === 0) {
-        setPreviewPts(null)
-        alert('No edges found here. Try clicking closer to the building interior or raise sensitivity.')
-      } else {
-        // Choose contour that contains the click (point-in-polygon test)
-        let bestIdx = -1, bestArea = 0
-        for (let i = 0; i < contours.size(); i++) {
-          const cnt = contours.get(i)
-          // cv.pointPolygonTest needs a contour; build a MatOfPoint2f if needed
-          const inside = cv.pointPolygonTest(cnt, new cv.Point(x, y), false)
-          if (inside >= 0) {
-            const area = cv.contourArea(cnt)
-            if (area > bestArea) { bestArea = area; bestIdx = i }
-          }
-        }
-
-        if (bestIdx < 0) {
-          // As fallback: pick the nearest contour by distance (abs pointPolygonTest value minimal)
-          let minDist = Infinity, minIdx = -1
-          for (let i = 0; i < contours.size(); i++) {
-            const cnt = contours.get(i)
-            const dist = Math.abs(cv.pointPolygonTest(cnt, new cv.Point(x, y), true))
-            if (dist < minDist) { minDist = dist; minIdx = i }
-          }
-          bestIdx = minIdx
-        }
-
-        if (bestIdx < 0) {
-          setPreviewPts(null)
-          alert('Could not associate your click with a shape. Try again with a different point/sensitivity.')
-        } else {
-          const cnt = contours.get(bestIdx)
-          const peri = cv.arcLength(cnt, true)
-          const eps  = Math.max(1, 0.015 * peri)   // ~1.5% simplification
-          let approx = new cv.Mat()
-          cv.approxPolyDP(cnt, approx, eps, true)
-
-          const pts = []
-          for (let i = 0; i < approx.rows; i++) {
-            const p = approx.intPtr(i)
-            pts.push([p[0], p[1]])  // already in rendered px
-          }
-          setPreviewPts(pts)
-        }
-      }
-
-      // Cleanup
-      gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete(); src.delete()
-    } catch (err) {
-      console.error(err)
-      alert('Auto-detect failed here. Try a different click or adjust sensitivity.')
+    const ok = detectAtPoint(x, y)
+    if (!ok) {
+      alert('Could not detect a closed shape at that point. Toggle “Invert”, or adjust sensitivity, then click again closer to the interior border.')
     }
   }
 
@@ -237,7 +266,7 @@ export default function MapPanel({ user }) {
           <button className="btn btn-primary" type="submit">Find</button>
         </form>
 
-        {/* Staff: simple per-building detection */}
+        {/* Staff: simplest per-building one-click detection */}
         {isStaff && (
           <div className="flex" style={{ gap:8, alignItems:'center', flexWrap:'wrap' }}>
             <select
@@ -256,20 +285,25 @@ export default function MapPanel({ user }) {
 
             <button
               className="btn xs"
-              onClick={()=> setAutoMode(m=>!m)}
+              onClick={()=> { setAutoMode(m=>!m); setPreviewPts(null) }}
               title="Click inside a building to auto-detect edges"
               disabled={!cvReady}
             >
               {autoMode ? '✅ Auto Detect On' : '✨ Auto Detect'}
             </button>
 
-            <label className="small" title="Higher = find more edges">
-              Edge sensitivity: {edgeSens}
+            <label className="small" title="Higher = finds more edges">
+              Sensitivity: {edgeSens}
               <input
-                type="range" min="40" max="220" step="5"
+                type="range" min="60" max="220" step="5"
                 value={edgeSens} onChange={e=>setEdgeSens(e.target.value)}
                 style={{ verticalAlign:'middle', marginLeft: 8 }}
               />
+            </label>
+
+            <label className="small" title="Toggle if your buildings are darker/lighter than background">
+              Invert
+              <input type="checkbox" checked={invert} onChange={e=>setInvert(e.target.checked)} style={{ marginLeft:6 }} />
             </label>
 
             {previewPts && (
@@ -305,7 +339,7 @@ export default function MapPanel({ user }) {
           onClick={onMapClick}
           style={{
             position:'absolute', inset:0, width:'100%', height:'100%',
-            pointerEvents: autoMode ? 'auto' : 'none', /* only capture clicks in auto mode */
+            pointerEvents: autoMode ? 'auto' : 'none',
             cursor: autoMode ? 'crosshair' : 'default'
           }}
         >
@@ -352,12 +386,12 @@ export default function MapPanel({ user }) {
       {isStaff && (
         <div className="small" style={{ marginTop:8, opacity:.8 }}>
           {autoMode
-            ? <>Click <b>inside</b> the {currentBuilding} shape. Adjust sensitivity if needed, then <b>Save</b>.</>
-            : <>To outline a building fast, choose it then click <b>Auto Detect</b>, and click inside the building.</>}
+            ? <>Click <b>inside</b> the {currentBuilding} shape. If it doesn’t snap, toggle <b>Invert</b> or adjust <b>Sensitivity</b>, then click again.</>
+            : <>Choose a building → click <b>Auto Detect</b> → click inside the building to outline & save.</>}
         </div>
       )}
 
-      {/* Quick select buttons for students */}
+      {/* Quick select for students/admins */}
       <div className="flex" style={{ marginTop:8, flexWrap:'wrap', gap:6 }}>
         {['Building A','Building B','Building C','Technologies','Administration','Sports'].map(n=>(
           <button key={n} className="btn xs" onClick={()=>setSelected(n)}>{n}</button>
