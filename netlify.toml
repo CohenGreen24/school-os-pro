@@ -1,13 +1,19 @@
-# netlify.toml — DROP-IN
+# Netlify config for Vite React app
+
 [build]
   command = "npm run build"
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
 
-# SPA fallback
+# SPA fallback so refresh/deep links work
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Optional: cache node_modules between builds
+[[plugins]]
+  package = "@netlify/plugin-cache"

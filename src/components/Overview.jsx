@@ -1,142 +1,127 @@
-// src/components/Overview.jsx
+// src/components/Overview.jsx — DROP-IN (compact Mon–Fri + upcoming)
 import React from 'react'
 import { supabase } from '../supabase'
 
-const PERIODS = [
-  { key:'caregroup', label:'Caregroup',  period:0, start:'08:50', end:'09:00' },
-  { key:'1',        label:'Lesson 1',   period:1, start:'09:00', end:'09:50' },
-  { key:'2',        label:'Lesson 2',   period:2, start:'09:50', end:'10:40' },
-  { key:'recess',   label:'Recess',     period:3, start:'10:40', end:'11:00' },
-  { key:'3',        label:'Lesson 3',   period:4, start:'11:00', end:'11:50' },
-  { key:'4',        label:'Lesson 4',   period:5, start:'11:50', end:'12:40' },
-  { key:'lunch',    label:'Lunch',      period:6, start:'12:40', end:'13:30' },
-  { key:'5',        label:'Lesson 5',   period:7, start:'13:30', end:'14:20' },
-  { key:'6',        label:'Lesson 6',   period:8, start:'14:20', end:'15:10' },
-]
-
-function inAdelaideBetween(startHHMM, endHHMM) {
-  const now = new Date()
-  const toZ = (hhmm) => {
-    const [hh,mm] = hhmm.split(':').map(Number)
-    // build a date today in Australia/Adelaide
-    const f = new Intl.DateTimeFormat('en-AU', { timeZone:'Australia/Adelaide',
-      year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false })
-    const [{value:month},, {value:day},, {value:year}] = f.formatToParts(now)
-    return new Date(`${year}-${month}-${day}T${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:00+09:30`)
-  }
-  const s = toZ(startHHMM).getTime()
-  const e = toZ(endHHMM).getTime()
-  const n = new Date().getTime()
-  return n >= s && n <= e
-}
+const DAYS = ['Mon','Tue','Wed','Thu','Fri']
 
 export default function Overview({ user, go }) {
-  const [tt, setTt] = React.useState([])     -- entries
+  const [tt, setTt] = React.useState([])     // timetable entries
   const [upAsn, setUpAsn] = React.useState([])
   const [upAppt, setUpAppt] = React.useState([])
   const [wallet, setWallet] = React.useState(0)
 
   React.useEffect(() => {
     if (!user?.id) return
-    ;(async () => {
+    ;(async ()=>{
+      // timetable: expected schema timetable(user_id, day_idx 0-4, slot_idx 0.., label, room)
       const { data: t } = await supabase
-        .from('timetable_entries')
-        .select('*')
+        .from('timetable')
+        .select('day_idx,slot_idx,label,room')
         .eq('user_id', user.id)
-      setTt(t||[])
+        .order('day_idx,slot_idx')
+      setTt(t || [])
 
-      const in5d = new Date(); in5d.setDate(in5d.getDate()+5)
+      const now = new Date()
+      const in5 = new Date(now.getTime() + 5*24*60*60*1000).toISOString()
       const { data: a } = await supabase
-        .from('assignments')
-        .select('*')
-        .gte('due_at', new Date().toISOString())
-        .lte('due_at', in5d.toISOString())
-      setUpAsn(a||[])
+        .from('assignments_due_view')
+        .select('title,due_at')
+        .gte('due_at', now.toISOString())
+        .lte('due_at', in5)
+        .order('due_at')
+        .limit(5)
+      setUpAsn(a || [])
+
       const { data: ap } = await supabase
         .from('appointments')
-        .select('*')
-        .eq('student_id', user.id)
-        .gte('starts_at', new Date().toISOString())
-        .lte('starts_at', in5d.toISOString())
-      setUpAppt(ap||[])
+        .select('with_name,start_at')
+        .gte('start_at', now.toISOString())
+        .lte('start_at', in5)
+        .order('start_at')
+        .limit(5)
+      setUpAppt(ap || [])
 
       const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', user.id).maybeSingle()
-      if (w) setWallet(Number(w.balance)||0)
+      setWallet(w?.balance || 0)
     })()
   }, [user?.id])
 
-  const days = [1,2,3,4,5]
-  const byDay = (dow) => tt.filter(r => r.day_of_week === dow && !r.date_override)
+  const byDay = React.useMemo(() => {
+    const g = [[],[],[],[],[]]
+    tt.forEach(r => { if (r.day_idx>=0 && r.day_idx<5) g[r.day_idx].push(r) })
+    g.forEach(list => list.sort((a,b)=>a.slot_idx-b.slot_idx))
+    return g
+  }, [tt])
 
   return (
-    <div className="glass card" style={{padding:10}}>
-      <div className="row" style={{gridTemplateColumns:'2fr 1fr', alignItems:'start'}}>
-        {/* Left: Mon–Fri timetable compact */}
+    <div className="glass card" style={{ padding: 10 }}>
+      {/* Top quick actions */}
+      <div className="row" style={{ gridTemplateColumns: 'repeat(4, minmax(0,1fr))', marginBottom: 8 }}>
+        <button className="btn" onClick={()=>go('map')}>🗺️ Map</button>
+        <button className="btn" onClick={()=>go('appointments')}>🧑‍⚕️ Appointments</button>
+        <button className="btn" onClick={()=>go('assignments')}>✅ Assignments</button>
+        <button className="btn" onClick={()=>go('lunch')}>🍽️ Lunch (Balance: ${Number(wallet).toFixed(2)})</button>
+      </div>
+
+      <div className="row" style={{ gridTemplateColumns: '2fr 1fr', alignItems:'start' }}>
+        {/* Timetable Mon–Fri */}
         <section className="glass card">
-          <div className="timetable">
-            {days.map((dow, i) => (
-              <div key={dow} className="glass card dayCard">
-                <div className="dayHeader">
-                  <span>{['Mon','Tue','Wed','Thu','Fri'][i]}</span>
-                  <button className="btn xs" onClick={()=>go?.('calendar')}>Open day</button>
-                </div>
-                <div className="periodList">
-                  {PERIODS.map(p => {
-                    const row = byDay(dow).find(r => r.period === p.period)
-                    const active = inAdelaideBetween(p.start, p.end)
-                    return (
-                      <div key={p.period} className="period" style={{
-                        outline: active ? '2px solid #22c55e' : 'none',
-                        background: active ? 'rgba(34,197,94,.12)' : undefined
-                      }}>
-                        <div style={{fontWeight:700}}>
-                          {row?.subject || p.label}
-                        </div>
-                        <div className="meta">
-                          {row?.location || ''}
-                        </div>
-                      </div>
-                    )
-                  })}
+          <h3 style={{ margin: '4px 0 8px' }}>This Week</h3>
+          <div className="weekGrid">
+            {DAYS.map((d, idx) => (
+              <div key={d} className="dayCol">
+                <div className="dayHeader">{d}</div>
+                <div className="slots">
+                  {(byDay[idx] || []).map(s => (
+                    <div key={`${idx}-${s.slot_idx}`} className="slot">
+                      <div className="slotLabel">{labelForSlot(s.slot_idx)}: {s.label}</div>
+                      {s.room && <div className="slotSub">{s.room}</div>}
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
         </section>
 
-        {/* Right: shortcuts + upcoming + wallet + photo */}
-        <aside className="glass card" style={{display:'grid', gap:10}}>
-          <div className="shortcuts">
-            <button className="btn shortcut" onClick={()=>go?.('map')}>📍 Map</button>
-            <button className="btn shortcut" onClick={()=>go?.('appointments')}>🧑‍⚕️ Wellbeing</button>
-            <button className="btn shortcut" onClick={()=>go?.('lunch')}>🍽️ Lunch</button>
-            <button className="btn shortcut" onClick={()=>go?.('library')}>📚 Library</button>
+        {/* Upcoming */}
+        <aside className="glass card">
+          <h3 style={{ margin: '4px 0 8px' }}>Upcoming</h3>
+          <div className="list">
+            <div className="small" style={{ opacity: .7, marginBottom: 4 }}>Assignments</div>
+            {(upAsn||[]).length===0 && <div className="small">No assignments due in 5 days.</div>}
+            {(upAsn||[]).map((a,i)=>(
+              <div className="item" key={i}>
+                <div style={{fontWeight:600}}>{a.title}</div>
+                <div className="small">{fmtDate(a.due_at)}</div>
+              </div>
+            ))}
           </div>
-
-          <div className="glass card">
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <strong>Upcoming (5 days)</strong>
-              <span className="pill">Wallet: ${wallet.toFixed(2)}</span>
-            </div>
-            <div className="upcomingList" style={{marginTop:8}}>
-              {upAsn.map(a=>(
-                <div className="upItem" key={a.id}><span>📕 {a.title}</span><span className="small">{new Date(a.due_at).toLocaleString('en-AU',{timeZone:'Australia/Adelaide'})}</span></div>
-              ))}
-              {upAppt.map(a=>(
-                <div className="upItem" key={a.id}><span>🧑‍⚕️ Appointment</span><span className="small">{new Date(a.starts_at).toLocaleString('en-AU',{timeZone:'Australia/Adelaide'})}</span></div>
-              ))}
-              {(!upAsn.length && !upAppt.length) && <div className="small" style={{opacity:.8}}>Nothing due.</div>}
-            </div>
-          </div>
-
-          <div className="glass card center" style={{padding:12}}>
-            <div className="avatarBox">
-              <img className="avatar" alt={user.name} src={user.avatar_url || 'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(user.name)} />
-            </div>
-            <div className="small">{user.name}</div>
+          <div className="list" style={{ marginTop: 10 }}>
+            <div className="small" style={{ opacity: .7, marginBottom: 4 }}>Appointments</div>
+            {(upAppt||[]).length===0 && <div className="small">No appointments in 5 days.</div>}
+            {(upAppt||[]).map((a,i)=>(
+              <div className="item" key={i}>
+                <div style={{fontWeight:600}}>{a.with_name}</div>
+                <div className="small">{fmtDate(a.start_at)}</div>
+              </div>
+            ))}
           </div>
         </aside>
       </div>
     </div>
   )
+}
+
+function labelForSlot(si){
+  // Matches your structure:
+  // 0 Caregroup (10m), 1 L1, 2 L2, 3 Recess, 4 L3, 5 L4, 6 Lunch, 7 L5, 8 L6
+  const map = ['Caregroup','Lesson 1','Lesson 2','Recess','Lesson 3','Lesson 4','Lunch','Lesson 5','Lesson 6']
+  return map[si] ?? `Slot ${si}`
+}
+function fmtDate(s){
+  try{
+    const d = new Date(s)
+    return d.toLocaleString('en-AU', { dateStyle:'medium', timeStyle:'short' })
+  }catch{ return s }
 }
