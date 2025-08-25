@@ -1,105 +1,88 @@
+// src/components/AdminPanel.jsx
 import React from 'react'
 import { supabase } from '../supabase'
 
-export default function AdminPanel({ user, styleVariant='glass' }) {
-  if (user.role !== 'admin') return <div className={styleVariant==='solid'?'card solid':'glass card'}>Admins only.</div>
-
+export default function AdminPanel({ user }) {
+  const isAdmin = user?.role === 'admin' || user?.role === 'teacher'
   const [teachers,setTeachers] = React.useState([])
   const [students,setStudents] = React.useState([])
-  const [pairs,setPairs] = React.useState([])
-  const [tSel,setTSel] = React.useState('')
-  const [sSel,setSSel] = React.useState('')
-  const [roleSel,setRoleSel] = React.useState({ id:'', role:'' })
+  const [selTeacher,setSelTeacher] = React.useState(null)
+  const [selStudentIds,setSelStudentIds] = React.useState([])
 
-  const load = React.useCallback(async ()=>{
-    const [{ data: t }, { data: s }, { data: p }] = await Promise.all([
-      supabase.from('users').select('id,name,code,role').eq('role','teacher').order('name'),
-      supabase.from('users').select('id,name,code,role').eq('role','student').order('name'),
-      supabase.from('teacher_students').select('teacher_id, student_id')
-    ])
-    setTeachers(t||[]); setStudents(s||[]); setPairs(p||[])
-  }, [])
+  React.useEffect(()=>{ (async()=>{
+    const { data: t } = await supabase.from('users').select('id,name').eq('role','teacher').order('name')
+    const { data: s } = await supabase.from('users').select('id,name,year_level,care_group').eq('role','student').order('name')
+    setTeachers(t||[]); setStudents(s||[])
+  })() },[])
 
-  React.useEffect(()=>{ load() }, [load])
-
-  const assign = async ()=>{
-    if(!tSel || !sSel) return
-    await supabase.from('teacher_students').upsert({ teacher_id: tSel, student_id: sSel })
-    setSSel(''); load()
-  }
-  const unassign = async (teacher_id, student_id)=>{
-    await supabase.from('teacher_students').delete().match({ teacher_id, student_id })
-    load()
-  }
-  const saveRole = async ()=>{
-    if(!roleSel.id) return
-    await supabase.from('users').update({ role: roleSel.role }).eq('id', roleSel.id)
-    setRoleSel({ id:'', role:'' }); load()
+  const assign = async () => {
+    if (!selTeacher || !selStudentIds.length) return
+    await supabase.rpc('assign_students_to_teacher', { p_teacher: selTeacher, p_students: selStudentIds, p_is_homegroup: true })
+    alert('Assigned.')
   }
 
-  const cardClass = styleVariant==='solid' ? 'card solid'
-                   : styleVariant==='outline' ? 'card outline'
-                   : 'glass card'
+  const createMassAssignment = async () => {
+    const title = prompt('Assignment title?'); if (!title) return
+    const due = prompt('Due (YYYY-MM-DD hh:mm, Adelaide time)?'); if (!due) return
+    const scope = prompt('Scope (class/year/school)?','class')
+    let payload = { title, due_at: new Date(due+':00+09:30').toISOString(), created_by: user.id, scope }
+    if (scope==='class') payload.target_class_code = prompt('Class code?')
+    if (scope==='year')  payload.target_year = Number(prompt('Year level?'))
+    const { error } = await supabase.from('assignments').insert(payload)
+    if (error) alert(error.message); else alert('Assignment created.')
+  }
+
+  const createMassPost = async () => {
+    const title = prompt('Post title?'); if (!title) return
+    const body = prompt('Body?') || null
+    const scope = prompt('Scope (class/year/school)?','school')
+    let payload = { title, body, created_by: user.id, scope }
+    if (scope==='class') payload.target_class_code = prompt('Class code?')
+    if (scope==='year')  payload.target_year = Number(prompt('Year level?'))
+    const { error } = await supabase.from('bulletin_posts').insert(payload)
+    if (error) alert(error.message); else alert('Posted.')
+  }
 
   return (
-    <div className={cardClass}>
-      <h2>Admin Control</h2>
+    <div className="glass card" style={{padding:10}}>
+      <h3 style={{marginTop:0}}>Admin & Teacher Tools</h3>
+      {!isAdmin && <div className="small" style={{color:'#ef4444'}}>No access.</div>}
+      {isAdmin && (
+        <div className="row" style={{gridTemplateColumns:'1fr 1fr'}}>
+          <section className="glass card">
+            <h4>Assign students to homegroup</h4>
+            <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
+              <select className="input" onChange={e=>setSelTeacher(e.target.value)}>
+                <option value="">Choose teacher…</option>
+                {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button className="btn btn-primary" onClick={assign}>Assign</button>
+            </div>
+            <div style={{maxHeight:320, overflow:'auto', display:'grid', gap:6}}>
+              {students.map(s => (
+                <label key={s.id} className="glass card" style={{padding:6, display:'flex', gap:8, alignItems:'center'}}>
+                  <input type="checkbox" onChange={e=>{
+                    setSelStudentIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id=>id!==s.id))
+                  }}/>
+                  <div>{s.name}</div>
+                  <div className="small" style={{marginLeft:'auto', opacity:.7}}>Y{s.year_level} {s.care_group||''}</div>
+                </label>
+              ))}
+            </div>
+          </section>
 
-      <div className="row" style={{gridTemplateColumns:'1fr 1fr'}}>
-        <div className="glass card">
-          <b>Assign student → teacher</b>
-          <div className="row narrow" style={{gridTemplateColumns:'1fr 1fr auto'}}>
-            <select className="input" value={tSel} onChange={e=>setTSel(e.target.value)}>
-              <option value="">Choose teacher…</option>
-              {teachers.map(t=> <option key={t.id} value={t.id}>{t.name} — {t.code}</option>)}
-            </select>
-            <select className="input" value={sSel} onChange={e=>setSSel(e.target.value)}>
-              <option value="">Choose student…</option>
-              {students.map(s=> <option key={s.id} value={s.id}>{s.name} — {s.code}</option>)}
-            </select>
-            <button className="btn btn-primary" onClick={assign}>Assign</button>
-          </div>
+          <section className="glass card">
+            <h4>Mass create</h4>
+            <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+              <button className="btn" onClick={createMassAssignment}>+ Assignment</button>
+              <button className="btn" onClick={createMassPost}>+ Bulletin Post</button>
+            </div>
+            <div className="small" style={{opacity:.8, marginTop:8}}>
+              Tip: Use scope <b>class/year/school</b> for broad targeting.
+            </div>
+          </section>
         </div>
-
-        <div className="glass card">
-          <b>Change user role</b>
-          <div className="row narrow" style={{gridTemplateColumns:'1fr 1fr auto'}}>
-            <select className="input" value={roleSel.id} onChange={e=>setRoleSel(r=>({...r, id:e.target.value}))}>
-              <option value="">Pick user…</option>
-              {[...teachers, ...students].map(u=> <option key={u.id} value={u.id}>{u.name} — {u.code} ({u.role})</option>)}
-            </select>
-            <select className="input" value={roleSel.role} onChange={e=>setRoleSel(r=>({...r, role:e.target.value}))}>
-              <option value="">Role…</option>
-              <option value="student">student</option>
-              <option value="teacher">teacher</option>
-              <option value="wellbeing">wellbeing</option>
-              <option value="admin">admin</option>
-            </select>
-            <button className="btn btn-primary" onClick={saveRole}>Save</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="glass card">
-        <b>Current assignments</b>
-        <div className="list">
-          {teachers.map(t=>{
-            const kids = pairs.filter(p=>p.teacher_id===t.id).map(p=> students.find(s=>s.id===p.student_id)).filter(Boolean)
-            return (
-              <div key={t.id} className="glass card">
-                <div><b>{t.name}</b> — {t.code}</div>
-                {kids.length===0 && <div className="small" style={{opacity:.7}}>No students yet</div>}
-                {kids.map(s=>(
-                  <div key={s.id} className="flex" style={{justifyContent:'space-between', alignItems:'center'}}>
-                    <div>{s.name} — {s.code}</div>
-                    <button className="btn btn-ghost small" onClick={()=>unassign(t.id, s.id)}>Unassign</button>
-                  </div>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      )}
     </div>
   )
 }

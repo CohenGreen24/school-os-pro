@@ -1,57 +1,78 @@
+// src/components/BulletinBoard.jsx
 import React from 'react'
 import { supabase } from '../supabase'
 
-export default function BulletinBoard({ user, styleVariant='glass', density='comfortable' }){
-  const [items,setItems] = React.useState([])
-  const [title,setTitle] = React.useState('')
-  const [content,setContent] = React.useState('')
-  const canPost = user.role!=='student'
+function usePosts() {
+  const [posts,setPosts] = React.useState([])
+  React.useEffect(()=>{ (async()=>{
+    const { data } = await supabase
+      .from('bulletin_posts')
+      .select('*, bulletin_polls(*, bulletin_poll_options(*)), created_by(*)')
+      .order('created_at',{ascending:false})
+    setPosts(data||[])
+  })() },[])
+  return posts
+}
 
-  const load = async ()=>{
-    const { data } = await supabase.from('bulletin_board').select('*, author:author_id(name)').order('created_at',{ascending:false}).limit(30)
-    setItems(data||[])
+export default function BulletinBoard({ user }) {
+  const posts = usePosts()
+  const isStaff = ['teacher','admin','wellbeing'].includes(user?.role)
+
+  const createPoll = async () => {
+    if (!isStaff) return
+    const title = prompt('Poll title (e.g. Math club venue)?')
+    if (!title) return
+    const choices = prompt('Options (comma separated, 2–6)?')
+    const arr = (choices||'').split(',').map(s=>s.trim()).filter(Boolean).slice(2,6).length
+      ? (choices||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,6)
+      : ['Option A','Option B','Option C','Option D']
+    const { data: post, error } = await supabase.from('bulletin_posts').insert({
+      title, body:null, created_by:user.id, scope:'school'
+    }).select('*').single()
+    if (error) return alert(error.message)
+    const { data: poll, error: pe } = await supabase.from('bulletin_polls').insert({ post_id: post.id, question: title }).select('*').single()
+    if (pe) return alert(pe.message)
+    const rows = arr.map(t => ({ post_id: post.id, option_text: t }))
+    const { error: oe } = await supabase.from('bulletin_poll_options').insert(rows)
+    if (oe) return alert(oe.message)
+    alert('Poll created.')
+    location.reload()
   }
-  React.useEffect(()=>{
-    load()
-    const ch = supabase.channel('bulletins').on('postgres_changes',{event:'*',schema:'public',table:'bulletin_board'},load).subscribe()
-    return ()=>supabase.removeChannel(ch)
-  },[])
 
-  const post = async ()=>{
-    if(!title||!content) return
-    await supabase.from('bulletin_board').insert({title,content,author_id:user.id})
-    setTitle(''); setContent('')
+  const vote = async (post_id, option_id) => {
+    await supabase.rpc('cast_vote', { p_post: post_id, p_option: option_id, p_voter: user.id })
   }
-
-  const cardClass = styleVariant==='solid' ? 'card solid' : styleVariant==='outline' ? 'card outline' : 'glass card'
-  const rowClass = density==='compact' ? 'row narrow' : 'row'
 
   return (
-    <div className={cardClass}>
-      <div className="flex"><h2>Bulletin Board</h2><span className="right small">{items.length} posts</span></div>
-      {canPost && (
-        <div className={rowClass} style={{gridTemplateColumns:'1fr 2fr auto'}}>
-          <input className="input" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
-          <input className="input" placeholder="Content" value={content} onChange={e=>setContent(e.target.value)} />
-          <button className="btn btn-primary" onClick={post}>Post</button>
-        </div>
-      )}
-      <div className="list">
-        {items.map(b => (
-          <div key={b.id} className={cardClass}>
-            <div className="flex">
-              <div style={{minWidth:0}}>
-                <div><b className="clamp">{b.title}</b></div>
-                <div className="small clamp">{b.content}</div>
-              </div>
-              <div className="right small" style={{textAlign:'right',minWidth:140}}>
-                <div>{b.author?.name||'—'}</div>
-                <div>{new Date(b.created_at).toLocaleString()}</div>
-              </div>
+    <div className="glass card" style={{padding:10}}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+        <h3 style={{margin:0}}>Bulletin Board</h3>
+        {isStaff && <button className="btn xs btn-primary" onClick={createPoll}>+ New Poll</button>}
+      </div>
+      <div className="blockList">
+        {posts.map(p => (
+          <div className="blockItem" key={p.id}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:800, marginBottom:6}}>{p.title}</div>
+              {p.body && <div className="small">{p.body}</div>}
+              {p.bulletin_polls?.length ? (
+                <div className="small" style={{marginTop:8}}>
+                  {p.bulletin_polls.map(pl => (
+                    <div key={pl.id} style={{margin:'6px 0'}}>
+                      <div style={{fontWeight:700, marginBottom:6}}>{pl.question}</div>
+                      <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+                        {p.bulletin_poll_options?.filter(o=>o.post_id===p.id).map(o => (
+                          <button key={o.id} className="btn xs" onClick={()=>vote(p.id, o.id)}>{o.option_text}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         ))}
-        {items.length===0 && <div className="small loading">Loading bulletins…</div>}
+        {!posts.length && <div className="small" style={{opacity:.8}}>No posts yet.</div>}
       </div>
     </div>
   )

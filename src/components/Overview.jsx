@@ -2,227 +2,140 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-const DAYS = ['Mon','Tue','Wed','Thu','Fri']
-const SLOTS = [
-  { key:'care', label:'Caregroup',  minutes:10 },
-  { key:'l1',   label:'Lesson 1',   minutes:50 },
-  { key:'l2',   label:'Lesson 2',   minutes:50 },
-  { key:'rec',  label:'Recess',     minutes:20 },
-  { key:'l3',   label:'Lesson 3',   minutes:50 },
-  { key:'l4',   label:'Lesson 4',   minutes:50 },
-  { key:'lun',  label:'Lunch',      minutes:50 },
-  { key:'l5',   label:'Lesson 5',   minutes:50 },
-  { key:'l6',   label:'Lesson 6',   minutes:50 },
+const PERIODS = [
+  { key:'caregroup', label:'Caregroup',  period:0, start:'08:50', end:'09:00' },
+  { key:'1',        label:'Lesson 1',   period:1, start:'09:00', end:'09:50' },
+  { key:'2',        label:'Lesson 2',   period:2, start:'09:50', end:'10:40' },
+  { key:'recess',   label:'Recess',     period:3, start:'10:40', end:'11:00' },
+  { key:'3',        label:'Lesson 3',   period:4, start:'11:00', end:'11:50' },
+  { key:'4',        label:'Lesson 4',   period:5, start:'11:50', end:'12:40' },
+  { key:'lunch',    label:'Lunch',      period:6, start:'12:40', end:'13:30' },
+  { key:'5',        label:'Lesson 5',   period:7, start:'13:30', end:'14:20' },
+  { key:'6',        label:'Lesson 6',   period:8, start:'14:20', end:'15:10' },
 ]
 
-// Build start/end from 08:50 with given minutes
-function slotTimes(){
-  const out=[]; let h=8,m=50
-  for(const s of SLOTS){
-    const start=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`
-    let mm=m+s.minutes, hh=h; while(mm>=60){ mm-=60; hh++ }
-    const end=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
-    out.push({key:s.key,label:s.label,start,end})
-    h=hh; m=mm
+function inAdelaideBetween(startHHMM, endHHMM) {
+  const now = new Date()
+  const toZ = (hhmm) => {
+    const [hh,mm] = hhmm.split(':').map(Number)
+    // build a date today in Australia/Adelaide
+    const f = new Intl.DateTimeFormat('en-AU', { timeZone:'Australia/Adelaide',
+      year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false })
+    const [{value:month},, {value:day},, {value:year}] = f.formatToParts(now)
+    return new Date(`${year}-${month}-${day}T${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:00+09:30`)
   }
-  return out
-}
-const TIMES = slotTimes()
-
-// Merge adjacent doubles (same subject+room across neighbor lesson slots)
-function mergeDay(daySlots){
-  const merged=[]; let i=0
-  while(i<daySlots.length){
-    const a=daySlots[i]
-    if(i<daySlots.length-1){
-      const b=daySlots[i+1]
-      const canMerge = a && b && a.kind==='lesson' && b.kind==='lesson' &&
-        a.subject && b.subject && a.subject===b.subject &&
-        a.room && b.room && a.room===b.room
-      if(canMerge){
-        merged.push({ ...a, span:2, endLabel: TIMES[i+1].end })
-        i+=2; continue
-      }
-    }
-    merged.push({ ...a, span:1, endLabel: TIMES[i].end })
-    i+=1
-  }
-  return merged
+  const s = toZ(startHHMM).getTime()
+  const e = toZ(endHHMM).getTime()
+  const n = new Date().getTime()
+  return n >= s && n <= e
 }
 
-const DEMO_SUBJECTS=['Math','English','Science','History','Geography','PE','Art','Tech','Drama','Music']
+export default function Overview({ user, go }) {
+  const [tt, setTt] = React.useState([])     -- entries
+  const [upAsn, setUpAsn] = React.useState([])
+  const [upAppt, setUpAppt] = React.useState([])
+  const [wallet, setWallet] = React.useState(0)
 
-const Money=({n})=><b>${(Number(n)||0).toFixed(2)}</b>
-
-export default function Overview({ user, onGo }){
-  const [wallet,setWallet]=React.useState(0)
-  const [photoUrl,setPhotoUrl]=React.useState(null)
-  const [appointments,setAppointments]=React.useState([])
-  const [assignments,setAssignments]=React.useState([])
-  const [grid,setGrid]=React.useState([]) // per-day merged rows
-
-  const loadData = React.useCallback(async ()=>{
-    if(!user?.id) return
-
-    // Wallet
-    const {data:w}=await supabase.from('wallets').select('balance').eq('user_id',user.id).maybeSingle()
-    setWallet(w?.balance??0)
-
-    // Avatar
-    const {data:u}=await supabase.from('users').select('avatar_url').eq('id',user.id).maybeSingle()
-    setPhotoUrl(u?.avatar_url||null)
-
-    // Appointments next 5 days
-    const now=new Date()
-    const soon=new Date(Date.now()+5*86400000)
-    const {data:appts}=await supabase
-      .from('appointments')
-      .select('id,start_at,staff_name,topic')
-      .gte('start_at', now.toISOString())
-      .lte('start_at', soon.toISOString())
-      .eq('student_id', user.id)
-      .order('start_at', {ascending:true})
-    setAppointments(appts||[])
-
-    // Assignments upcoming
-    const {data:asg}=await supabase
-      .from('assignments')
-      .select('id,title,subject,due_date,status')
-      .gte('due_date', now.toISOString())
-      .eq('student_id', user.id)
-      .order('due_date', {ascending:true})
-    setAssignments(asg||[])
-
-    // Timetable: try two shapes, else demo
-    let timetable=null
-    try{
-      const {data:t1,error:e1}=await supabase
+  React.useEffect(() => {
+    if (!user?.id) return
+    ;(async () => {
+      const { data: t } = await supabase
         .from('timetable_entries')
-        .select('day,slot,subject,room')
+        .select('*')
         .eq('user_id', user.id)
-      if(!e1 && Array.isArray(t1) && t1.length) timetable=t1
-    }catch{}
+      setTt(t||[])
 
-    if(!timetable){
-      try{
-        const {data:t2,error:e2}=await supabase
-          .from('timetables')
-          .select('day_of_week,slot_index,subject,room')
-          .eq('user_id', user.id)
-        if(!e2 && Array.isArray(t2) && t2.length){
-          timetable=t2.map(r=>({day:r.day_of_week,slot:r.slot_index,subject:r.subject,room:r.room}))
-        }
-      }catch{}
-    }
+      const in5d = new Date(); in5d.setDate(in5d.getDate()+5)
+      const { data: a } = await supabase
+        .from('assignments')
+        .select('*')
+        .gte('due_at', new Date().toISOString())
+        .lte('due_at', in5d.toISOString())
+      setUpAsn(a||[])
+      const { data: ap } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('student_id', user.id)
+        .gte('starts_at', new Date().toISOString())
+        .lte('starts_at', in5d.toISOString())
+      setUpAppt(ap||[])
 
-    const base = Array.from({length:5}, ()=> SLOTS.map((s,i)=>{
-      const kind = s.label.toLowerCase().includes('lesson')?'lesson'
-                : s.label.toLowerCase().includes('recess')?'recess'
-                : s.label.toLowerCase().includes('lunch')?'lunch'
-                : 'care'
-      return { kind, subject:null, room:null, label:s.label, start:TIMES[i].start, end:TIMES[i].end }
-    }))
+      const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', user.id).maybeSingle()
+      if (w) setWallet(Number(w.balance)||0)
+    })()
+  }, [user?.id])
 
-    if(timetable){
-      for(const r of timetable){
-        const d=(r.day??1)-1
-        const s=r.slot??0
-        if(d>=0&&d<5&&s>=0&&s<9){
-          base[d][s].subject=r.subject||base[d][s].subject
-          base[d][s].room=r.room||base[d][s].room
-        }
-      }
-    }else{
-      // Demo with required doubles
-      for(let d=0; d<5; d++){
-        let si=d
-        for(let s=0; s<9; s++){
-          if(base[d][s].kind==='lesson'){
-            const subj=DEMO_SUBJECTS[(si++)%DEMO_SUBJECTS.length]
-            base[d][s].subject=subj
-            base[d][s].room = (d===2&&(s===4||s===5))?'A2'
-                           : (d===4&&(s===1||s===2))?'C3'
-                           : ['A1','B2','C1','A3','Tech 2','Gym 1'][(d+s)%6]
-          }
-        }
-        if(d===2){ base[d][4].subject='Math'; base[d][5].subject='Math'; base[d][4].room='A2'; base[d][5].room='A2' }
-        if(d===4){ base[d][1].subject='English'; base[d][2].subject='English'; base[d][1].room='C3'; base[d][2].room='C3' }
-      }
-    }
-
-    setGrid(base.map(mergeDay))
-  },[user?.id])
-
-  React.useEffect(()=>{ loadData() },[loadData])
+  const days = [1,2,3,4,5]
+  const byDay = (dow) => tt.filter(r => r.day_of_week === dow && !r.date_override)
 
   return (
-    <div className="overviewCompact glass">
-      {/* Header row */}
-      <div className="ovHeader">
-        <div className="ovLeft">
-          <h2 className="ovTitle">This Week</h2>
-          <div className="ovShortcuts">
-            <button className="btn xs" onClick={()=>onGo?.('calendar')}>Calendar</button>
-            <button className="btn xs" onClick={()=>onGo?.('assignments')}>Assignments</button>
-            <button className="btn xs" onClick={()=>onGo?.('appointments')}>Wellbeing</button>
-            <button className="btn xs" onClick={()=>onGo?.('lunch')}>Lunch (<Money n={wallet}/>)</button>
-            <button className="btn xs" onClick={()=>onGo?.('map')}>Map</button>
-          </div>
-        </div>
-        <div className="ovRight">
-          <div className="glass pill small">Wallet: <Money n={wallet}/></div>
-          {photoUrl ? <img className="avatar" src={photoUrl} alt="profile"/> : <div className="avatar placeholder">👤</div>}
-        </div>
-      </div>
-
-      {/* Timetable: compact Mon–Fri, no separate Times column */}
-      <div className="weekCompact">
-        {grid.map((day, di)=>(
-          <div key={DAYS[di]} className="dayColC glass">
-            <div className="dayHeadC">{DAYS[di]}</div>
-            <div className="dayGridC">
-              {day.map((slot, si)=>(
-                <div
-                  key={`${di}-${si}`}
-                  className={`slotC ${slot.kind} ${slot.span===2?'span2':''}`}
-                  style={slot.span===2 ? { gridRow: 'span 2' } : undefined}
-                  title={`${slot.kind==='lesson'?(slot.subject||'—'):SLOTS[si].label} • ${TIMES[si].start}–${slot.endLabel}`}
-                >
-                  <div className="slotTop">
-                    <div className="slotTitleC">
-                      {slot.kind==='lesson' ? (slot.subject||'—') : SLOTS[si].label}
-                    </div>
-                    {slot.span===2 && <span className="badge">Double</span>}
-                  </div>
-                  <div className="slotMetaC">
-                    {slot.kind==='lesson' ? (slot.room ? `Room ${slot.room}` : 'Room —') : ''}
-                  </div>
-                  <div className="slotTimeMini">{TIMES[si].start}–{slot.endLabel}</div>
+    <div className="glass card" style={{padding:10}}>
+      <div className="row" style={{gridTemplateColumns:'2fr 1fr', alignItems:'start'}}>
+        {/* Left: Mon–Fri timetable compact */}
+        <section className="glass card">
+          <div className="timetable">
+            {days.map((dow, i) => (
+              <div key={dow} className="glass card dayCard">
+                <div className="dayHeader">
+                  <span>{['Mon','Tue','Wed','Thu','Fri'][i]}</span>
+                  <button className="btn xs" onClick={()=>go?.('calendar')}>Open day</button>
                 </div>
+                <div className="periodList">
+                  {PERIODS.map(p => {
+                    const row = byDay(dow).find(r => r.period === p.period)
+                    const active = inAdelaideBetween(p.start, p.end)
+                    return (
+                      <div key={p.period} className="period" style={{
+                        outline: active ? '2px solid #22c55e' : 'none',
+                        background: active ? 'rgba(34,197,94,.12)' : undefined
+                      }}>
+                        <div style={{fontWeight:700}}>
+                          {row?.subject || p.label}
+                        </div>
+                        <div className="meta">
+                          {row?.location || ''}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Right: shortcuts + upcoming + wallet + photo */}
+        <aside className="glass card" style={{display:'grid', gap:10}}>
+          <div className="shortcuts">
+            <button className="btn shortcut" onClick={()=>go?.('map')}>📍 Map</button>
+            <button className="btn shortcut" onClick={()=>go?.('appointments')}>🧑‍⚕️ Wellbeing</button>
+            <button className="btn shortcut" onClick={()=>go?.('lunch')}>🍽️ Lunch</button>
+            <button className="btn shortcut" onClick={()=>go?.('library')}>📚 Library</button>
+          </div>
+
+          <div className="glass card">
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <strong>Upcoming (5 days)</strong>
+              <span className="pill">Wallet: ${wallet.toFixed(2)}</span>
+            </div>
+            <div className="upcomingList" style={{marginTop:8}}>
+              {upAsn.map(a=>(
+                <div className="upItem" key={a.id}><span>📕 {a.title}</span><span className="small">{new Date(a.due_at).toLocaleString('en-AU',{timeZone:'Australia/Adelaide'})}</span></div>
               ))}
+              {upAppt.map(a=>(
+                <div className="upItem" key={a.id}><span>🧑‍⚕️ Appointment</span><span className="small">{new Date(a.starts_at).toLocaleString('en-AU',{timeZone:'Australia/Adelaide'})}</span></div>
+              ))}
+              {(!upAsn.length && !upAppt.length) && <div className="small" style={{opacity:.8}}>Nothing due.</div>}
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Upcoming rows (single-line chips, scroll if overflow) */}
-      <div className="ovStrips">
-        <div className="glass card stripC">
-          <b>Appointments (5 days)</b>
-          <div className="stripFlow">
-            {appointments?.length ? appointments.map(a=>(
-              <div key={a.id} className="chip">{new Date(a.start_at).toLocaleString()} — {a.staff_name||'Staff'} {a.topic?`• ${a.topic}`:''}</div>
-            )): <span className="small">None</span>}
+          <div className="glass card center" style={{padding:12}}>
+            <div className="avatarBox">
+              <img className="avatar" alt={user.name} src={user.avatar_url || 'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(user.name)} />
+            </div>
+            <div className="small">{user.name}</div>
           </div>
-        </div>
-        <div className="glass card stripC">
-          <b>Assignments</b>
-          <div className="stripFlow">
-            {assignments?.length ? assignments.map(x=>(
-              <div key={x.id} className="chip">{x.subject||'Subject'} • {x.title} — {new Date(x.due_date).toLocaleDateString()}</div>
-            )): <span className="small">None</span>}
-          </div>
-        </div>
+        </aside>
       </div>
     </div>
   )
