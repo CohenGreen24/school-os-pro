@@ -2,7 +2,7 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-/** Your public image URL */
+/** ✅ Your public map URL */
 const MAP_URL = 'https://awxltfgbgnylacrklmik.supabase.co/storage/v1/object/public/maps/campus-map.png'
 
 /** Class code → building name */
@@ -21,51 +21,41 @@ function buildingFromClass(codeRaw='') {
 function normPoint(x, y, w, h) { return [x / w, y / h] }
 function denormPoint(nx, ny, w, h) { return [nx * w, ny * h] }
 
-/** Lazy-load OpenCV (from <script src="opencv.js">) */
+/** Wait for OpenCV to be ready (loaded via <script>) */
 function useOpenCV() {
-  const [cvReady, setCvReady] = React.useState(false)
+  const [ready, setReady] = React.useState(false)
   React.useEffect(() => {
     let mounted = true
-    const check = () => {
-      if (window.cv && window.cv.Mat) {
-        mounted && setCvReady(true)
-      } else {
-        setTimeout(check, 150)
-      }
+    const tick = () => {
+      // opencv.js signals onRuntimeInitialized, but polling is simple & robust here
+      if (window.cv && window.cv.Mat) { mounted && setReady(true) }
+      else setTimeout(tick, 120)
     }
-    check()
+    tick()
     return () => { mounted = false }
   }, [])
-  return cvReady
+  return ready
 }
 
 export default function MapPanel({ user }) {
-  const [imgOk, setImgOk]   = React.useState(true)
-  const [areas, setAreas]   = React.useState([])
+  const [areas, setAreas] = React.useState([])
   const [selected, setSelected] = React.useState(null)
   const [search, setSearch] = React.useState('')
 
   const isStaff = user?.role && user.role !== 'student'
-  const [drawMode, setDrawMode] = React.useState(false)
-  const [drawingFor, setDrawingFor] = React.useState('Building A')
-  const [points, setPoints] = React.useState([]) // manual points (px in current render)
-  const [imgDim, setImgDim] = React.useState({ w:0, h:0 })
 
+  // Simple per-building workflow
+  const [currentBuilding, setCurrentBuilding] = React.useState('Building A')
+  const [autoMode, setAutoMode] = React.useState(false)         // “Auto Detect” on/off
+  const [edgeSens, setEdgeSens] = React.useState(120)           // Canny high threshold (low = high/2)
+  const [previewPts, setPreviewPts] = React.useState(null)      // [[x,y], ...] in rendered px
+
+  const [imgOk, setImgOk] = React.useState(true)
   const imgRef = React.useRef(null)
   const svgRef = React.useRef(null)
-
   const cvReady = useOpenCV()
 
-  // --- AUTO DETECT state ---
-  const [autoMode, setAutoMode] = React.useState(false)
-  const [roi, setRoi] = React.useState(null) // {x,y,w,h} in rendered px
-  const [dragging, setDragging] = React.useState(null) // {sx,sy} start
-  const [lowThr, setLowThr] = React.useState(80)
-  const [highThr, setHighThr] = React.useState(180)
-  const [epsilonPct, setEpsilonPct] = React.useState(2.0) // approxPolyDP % of perimeter
-  const [autoPoly, setAutoPoly] = React.useState(null) // [[x,y],...]
-
-  // Load polygons
+  // Load saved polygons
   const loadAreas = React.useCallback(async () => {
     const { data, error } = await supabase
       .from('school_map_areas')
@@ -75,60 +65,16 @@ export default function MapPanel({ user }) {
   }, [])
   React.useEffect(() => { loadAreas() }, [loadAreas])
 
-  const onImgLoad = (e) => {
-    const img = e.target
-    setImgDim({ w: img.naturalWidth, h: img.naturalHeight })
-    setImgOk(true)
-  }
-  const onImgErr = () => setImgOk(false)
+  const onImgLoad = () => setImgOk(true)
+  const onImgErr  = () => setImgOk(false)
 
-  const onSearchGo = (e) => {
-    e.preventDefault()
-    const b = buildingFromClass(search)
-    if (b) setSelected(b)
-  }
-
-  // --- Manual draw ---
-  const onSvgClick = (e) => {
-    if (!drawMode || autoMode) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    setPoints(prev => [...prev, [x, y]])
-  }
-  const undoPoint  = () => setPoints(p => p.slice(0, -1))
-  const clearPoints= () => setPoints([])
-  const savePolygon = async () => {
-    const img = imgRef.current
-    if (!img || points.length < 3) return alert('Add at least 3 points.')
-    const rW = img.clientWidth, rH = img.clientHeight
-    const norm = points.map(([x, y]) => normPoint(x, y, rW, rH))
-    const existing = areas.find(a => a.name === drawingFor)
-    if (existing) {
-      const { error } = await supabase
-        .from('school_map_areas')
-        .update({ points: norm, updated_at: new Date().toISOString() })
-        .eq('id', existing.id)
-      if (error) return alert(error.message)
-    } else {
-      const { error } = await supabase
-        .from('school_map_areas')
-        .insert({ name: drawingFor, points: norm })
-      if (error) return alert(error.message)
-    }
-    clearPoints()
-    await loadAreas()
-    alert('Saved!')
-  }
-
-  // --- Convert stored norm points to px for drawing ---
+  // Convert stored normalized coords → current px
   const toPixels = (normPts) => {
     const img = imgRef.current
     if (!img || !normPts?.length) return []
     const rW = img.clientWidth, rH = img.clientHeight
     return normPts.map(([nx, ny]) => denormPoint(nx, ny, rW, rH))
   }
-
   const centerPx = (area) => {
     const img = imgRef.current
     if (!img) return [0,0]
@@ -148,56 +94,49 @@ export default function MapPanel({ user }) {
 
   const renderPolys = areas.map(a => ({ ...a, pix: toPixels(a.points || []) }))
 
-  // --- ROI draw for auto mode (mouse/touch) ---
-  const onOverlayDown = (e) => {
-    if (!autoMode) return
-    const rect = svgRef.current.getBoundingClientRect()
+  /* ------------------------------------------------------------------
+     AUTO-DETECT: Click inside a building → detect black-edge contour
+     Algorithm:
+      1) Draw the rendered <img> to a canvas sized to rendered pixels.
+      2) Canny edge detection (low=high/2).
+      3) Find all external contours.
+      4) Pick the contour whose polygon contains the click point; if
+         several, choose the largest by area (most building-like).
+      5) Approximate polygon (approxPolyDP) for neatness.
+      6) Preview (cyan). “Save to Building” commits to DB (normalized).
+  ------------------------------------------------------------------- */
+  const onMapClick = (e) => {
+    if (!autoMode || !cvReady) return
+    const svg = svgRef.current
+    const img = imgRef.current
+    if (!svg || !img) return
+
+    const rect = svg.getBoundingClientRect()
     const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
     const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-    setDragging({ sx:x, sy:y })
-    setRoi({ x, y, w: 0, h: 0 })
-  }
-  const onOverlayMove = (e) => {
-    if (!autoMode || !dragging) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-    const x0 = Math.min(dragging.sx, x)
-    const y0 = Math.min(dragging.sy, y)
-    const w  = Math.abs(x - dragging.sx)
-    const h  = Math.abs(y - dragging.sy)
-    setRoi({ x: x0, y: y0, w, h })
-  }
-  const onOverlayUp = () => { setDragging(null) }
 
-  // --- Auto detect inside ROI using OpenCV ---
-  const runDetect = React.useCallback(() => {
-    if (!cvReady) return alert('OpenCV is still loading. Try again in a second.')
-    if (!roi || roi.w < 10 || roi.h < 10) return alert('Draw a box around a building first.')
-    const imgEl = imgRef.current
-    if (!imgEl) return
-
-    // Create a canvas the size of the rendered image
-    const rW = imgEl.clientWidth, rH = imgEl.clientHeight
-    const canvas = document.createElement('canvas')
-    canvas.width = rW; canvas.height = rH
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.drawImage(imgEl, 0, 0, rW, rH)
-
-    const cv = window.cv
-    let src = cv.imread(canvas)
     try {
-      // Crop ROI
-      const rect = new cv.Rect(Math.max(roi.x|0,0), Math.max(roi.y|0,0), Math.min(roi.w|0, rW), Math.min(roi.h|0, rH))
-      let roiMat = src.roi(rect)
+      const rW = img.clientWidth, rH = img.clientHeight
 
-      // Gray → blur → canny
+      // Draw rendered image to canvas
+      const canvas = document.createElement('canvas')
+      canvas.width = rW; canvas.height = rH
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      ctx.drawImage(img, 0, 0, rW, rH)
+
+      const cv = window.cv
+      let src = cv.imread(canvas)
       let gray = new cv.Mat()
-      cv.cvtColor(roiMat, gray, cv.COLOR_RGBA2GRAY, 0)
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0)
+
+      // Slight blur then edges
       let blur = new cv.Mat()
-      cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0, 0)
+      cv.GaussianBlur(gray, blur, new cv.Size(3,3), 0, 0)
+
+      const high = Math.max(30, Math.min(255, Number(edgeSens)))
+      const low  = Math.floor(high / 2)
       let edges = new cv.Mat()
-      cv.Canny(blur, edges, Number(lowThr), Number(highThr))
+      cv.Canny(blur, edges, low, high)
 
       // Find contours
       let contours = new cv.MatVector()
@@ -205,56 +144,88 @@ export default function MapPanel({ user }) {
       cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
       if (contours.size() === 0) {
-        setAutoPoly(null)
-        alert('No edges found. Try adjusting thresholds or a tighter box.')
+        setPreviewPts(null)
+        alert('No edges found here. Try clicking closer to the building interior or raise sensitivity.')
       } else {
-        // Pick largest contour by area (assumes the building is the dominant region in ROI)
-        let maxArea = 0, maxIdx = 0
+        // Choose contour that contains the click (point-in-polygon test)
+        let bestIdx = -1, bestArea = 0
         for (let i = 0; i < contours.size(); i++) {
-          const a = cv.contourArea(contours.get(i))
-          if (a > maxArea) { maxArea = a; maxIdx = i }
+          const cnt = contours.get(i)
+          // cv.pointPolygonTest needs a contour; build a MatOfPoint2f if needed
+          const inside = cv.pointPolygonTest(cnt, new cv.Point(x, y), false)
+          if (inside >= 0) {
+            const area = cv.contourArea(cnt)
+            if (area > bestArea) { bestArea = area; bestIdx = i }
+          }
         }
-        const cnt = contours.get(maxIdx)
-        // Approximate polygon
-        const peri = cv.arcLength(cnt, true)
-        const eps = (Number(epsilonPct) / 100) * peri
-        let approx = new cv.Mat()
-        cv.approxPolyDP(cnt, approx, eps, true)
 
-        // Convert approx points to page coords (offset by ROI)
-        const pts = []
-        for (let i = 0; i < approx.rows; i++) {
-          const p = approx.intPtr(i)
-          const x = p[0] + roi.x
-          const y = p[1] + roi.y
-          pts.push([x, y])
+        if (bestIdx < 0) {
+          // As fallback: pick the nearest contour by distance (abs pointPolygonTest value minimal)
+          let minDist = Infinity, minIdx = -1
+          for (let i = 0; i < contours.size(); i++) {
+            const cnt = contours.get(i)
+            const dist = Math.abs(cv.pointPolygonTest(cnt, new cv.Point(x, y), true))
+            if (dist < minDist) { minDist = dist; minIdx = i }
+          }
+          bestIdx = minIdx
         }
-        setAutoPoly(pts)
+
+        if (bestIdx < 0) {
+          setPreviewPts(null)
+          alert('Could not associate your click with a shape. Try again with a different point/sensitivity.')
+        } else {
+          const cnt = contours.get(bestIdx)
+          const peri = cv.arcLength(cnt, true)
+          const eps  = Math.max(1, 0.015 * peri)   // ~1.5% simplification
+          let approx = new cv.Mat()
+          cv.approxPolyDP(cnt, approx, eps, true)
+
+          const pts = []
+          for (let i = 0; i < approx.rows; i++) {
+            const p = approx.intPtr(i)
+            pts.push([p[0], p[1]])  // already in rendered px
+          }
+          setPreviewPts(pts)
+        }
       }
 
       // Cleanup
-      gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete(); roiMat.delete()
-    } catch (e) {
-      console.error(e)
-      alert('Detection failed. Try adjusting thresholds or ROI.')
-    } finally {
-      src.delete()
+      gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete(); src.delete()
+    } catch (err) {
+      console.error(err)
+      alert('Auto-detect failed here. Try a different click or adjust sensitivity.')
     }
-  }, [cvReady, roi, lowThr, highThr, epsilonPct])
+  }
 
-  const acceptAuto = () => {
-    if (!autoPoly || autoPoly.length < 3) return
-    setPoints(autoPoly)     // move into manual points
-    setAutoPoly(null)
-    setRoi(null)
-    setAutoMode(false)
-    setDrawMode(true)       // enter manual so you can tweak points if you want
+  const savePreviewToBuilding = async () => {
+    const img = imgRef.current
+    if (!img || !previewPts || previewPts.length < 3) return
+    const rW = img.clientWidth, rH = img.clientHeight
+    const norm = previewPts.map(([x, y]) => normPoint(x, y, rW, rH))
+
+    const existing = areas.find(a => a.name === currentBuilding)
+    if (existing) {
+      const { error } = await supabase
+        .from('school_map_areas')
+        .update({ points: norm, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+      if (error) return alert(error.message)
+    } else {
+      const { error } = await supabase
+        .from('school_map_areas')
+        .insert({ name: currentBuilding, points: norm })
+      if (error) return alert(error.message)
+    }
+    setPreviewPts(null)
+    await loadAreas()
+    alert(`Saved outline for ${currentBuilding}`)
   }
 
   return (
     <div className="glass card" style={{ padding: 10 }}>
-      {/* Controls */}
+      {/* Top controls */}
       <div className="flex" style={{ justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:8 }}>
+        {/* Quick finder (unchanged) */}
         <form className="flex" onSubmit={(e)=>{e.preventDefault(); const b=buildingFromClass(search); if(b) setSelected(b)}} style={{ gap:8 }}>
           <input
             className="input"
@@ -266,13 +237,14 @@ export default function MapPanel({ user }) {
           <button className="btn btn-primary" type="submit">Find</button>
         </form>
 
+        {/* Staff: simple per-building detection */}
         {isStaff && (
-          <div className="flex" style={{ gap:8, flexWrap:'wrap' }}>
+          <div className="flex" style={{ gap:8, alignItems:'center', flexWrap:'wrap' }}>
             <select
               className="input xs"
-              value={drawingFor}
-              onChange={e=>setDrawingFor(e.target.value)}
-              title="Which building?"
+              value={currentBuilding}
+              onChange={e=>setCurrentBuilding(e.target.value)}
+              title="Select building to save into"
             >
               <option>Building A</option>
               <option>Building B</option>
@@ -282,54 +254,42 @@ export default function MapPanel({ user }) {
               <option>Sports</option>
             </select>
 
-            {/* Manual draw */}
-            <button className="btn xs" onClick={()=>{ setDrawMode(m=>!m); setAutoMode(false) }}>
-              {drawMode ? '✅ Finish Draw' : '✏️ Manual Draw'}
+            <button
+              className="btn xs"
+              onClick={()=> setAutoMode(m=>!m)}
+              title="Click inside a building to auto-detect edges"
+              disabled={!cvReady}
+            >
+              {autoMode ? '✅ Auto Detect On' : '✨ Auto Detect'}
             </button>
-            {drawMode && (
+
+            <label className="small" title="Higher = find more edges">
+              Edge sensitivity: {edgeSens}
+              <input
+                type="range" min="40" max="220" step="5"
+                value={edgeSens} onChange={e=>setEdgeSens(e.target.value)}
+                style={{ verticalAlign:'middle', marginLeft: 8 }}
+              />
+            </label>
+
+            {previewPts && (
               <>
-                <button className="btn xs" type="button" onClick={undoPoint}>Undo</button>
-                <button className="btn xs" type="button" onClick={clearPoints}>Clear</button>
-                <button className="btn xs btn-primary" type="button" onClick={savePolygon}>Save</button>
+                <button className="btn xs btn-primary" onClick={savePreviewToBuilding}>
+                  Save to {currentBuilding}
+                </button>
+                <button className="btn xs" onClick={()=>setPreviewPts(null)}>Discard</button>
               </>
             )}
-
-            {/* Auto detect */}
-            <button className="btn xs" onClick={()=>{ setAutoMode(a=>!a); setDrawMode(false); setAutoPoly(null) }}>
-              {autoMode ? '✅ Finish Auto' : '✨ Auto Detect'}
-            </button>
+            {!cvReady && <span className="small" style={{opacity:.8}}>Loading OpenCV…</span>}
           </div>
         )}
       </div>
 
-      {/* Auto controls */}
-      {isStaff && autoMode && (
-        <div className="glass card autoPanel" style={{ marginBottom:8 }}>
-          <div className="small" style={{ marginBottom:6 }}>
-            Drag a rectangle over a building, then adjust thresholds and click <b>Detect</b>.
-          </div>
-          <div className="flex" style={{ gap:10, flexWrap:'wrap', alignItems:'center' }}>
-            <label className="small">Low: {lowThr}
-              <input type="range" min="0" max="255" value={lowThr} onChange={e=>setLowThr(e.target.value)} />
-            </label>
-            <label className="small">High: {highThr}
-              <input type="range" min="0" max="255" value={highThr} onChange={e=>setHighThr(e.target.value)} />
-            </label>
-            <label className="small">Simplify: {epsilonPct}%
-              <input type="range" min="0" max="8" step="0.2" value={epsilonPct} onChange={e=>setEpsilonPct(e.target.value)} />
-            </label>
-            <button className="btn xs" type="button" onClick={runDetect} disabled={!cvReady}>Detect</button>
-            <button className="btn xs btn-primary" type="button" onClick={acceptAuto} disabled={!autoPoly || autoPoly.length<3}>Accept</button>
-            <span className="small" style={{ opacity:.8 }}>{cvReady ? 'OpenCV ready' : 'Loading OpenCV…'}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Map */}
+      {/* Map + overlay */}
       <div style={{ position:'relative', width:'100%', overflow:'hidden', borderRadius:12 }}>
         {!imgOk && (
           <div className="glass card small" style={{ marginBottom:6, color:'#ef4444' }}>
-            Image failed to load. Check the MAP_URL.
+            Image failed to load. Check MAP_URL.
           </div>
         )}
         <img
@@ -337,19 +297,17 @@ export default function MapPanel({ user }) {
           src={MAP_URL}
           alt="School map"
           onLoad={onImgLoad}
-          onError={()=>setImgOk(false)}
+          onError={onImgErr}
           style={{ width:'100%', height:'auto', display:'block', userSelect:'none' }}
         />
         <svg
           ref={svgRef}
-          onMouseDown={onOverlayDown}
-          onMouseMove={onOverlayMove}
-          onMouseUp={onOverlayUp}
-          onTouchStart={onOverlayDown}
-          onTouchMove={onOverlayMove}
-          onTouchEnd={onOverlayUp}
-          onClick={onSvgClick}
-          style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents: (drawMode || autoMode) ? 'auto':'none' }}
+          onClick={onMapClick}
+          style={{
+            position:'absolute', inset:0, width:'100%', height:'100%',
+            pointerEvents: autoMode ? 'auto' : 'none', /* only capture clicks in auto mode */
+            cursor: autoMode ? 'crosshair' : 'default'
+          }}
         >
           {/* Saved polygons */}
           {renderPolys.map(a => {
@@ -373,40 +331,16 @@ export default function MapPanel({ user }) {
             )
           })}
 
-          {/* Manual points preview */}
-          {drawMode && points.length > 0 && (
+          {/* Preview of detected polygon (cyan) */}
+          {previewPts && previewPts.length>2 && (
             <>
               <polyline
-                points={points.map(([x,y])=>`${x},${y}`).join(' ')}
+                points={previewPts.map(([x,y])=>`${x},${y}`).join(' ')}
                 fill="rgba(14,165,233,0.18)"
                 stroke="rgba(14,165,233,1)"
                 strokeWidth="2"
               />
-              {points.map(([x,y],i)=>(
-                <circle key={i} cx={x} cy={y} r="4" fill="rgba(14,165,233,1)" />
-              ))}
-            </>
-          )}
-
-          {/* Auto ROI rectangle */}
-          {autoMode && roi && (
-            <rect
-              x={roi.x} y={roi.y} width={roi.w} height={roi.h}
-              fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.9)" strokeWidth="2"
-              strokeDasharray="6 4"
-            />
-          )}
-
-          {/* Auto detected polygon preview (cyan) */}
-          {autoMode && autoPoly && autoPoly.length>2 && (
-            <>
-              <polyline
-                points={autoPoly.map(([x,y])=>`${x},${y}`).join(' ')}
-                fill="rgba(14,165,233,0.18)"
-                stroke="rgba(14,165,233,1)"
-                strokeWidth="2"
-              />
-              {autoPoly.map(([x,y],i)=>(
+              {previewPts.map(([x,y],i)=>(
                 <circle key={i} cx={x} cy={y} r="4" fill="rgba(14,165,233,1)" />
               ))}
             </>
@@ -414,12 +348,16 @@ export default function MapPanel({ user }) {
         </svg>
       </div>
 
-      {/* Selected info + quick buttons */}
-      <div style={{ marginTop:8 }}>
-        {selected
-          ? <div className="small">Selected: <b>{selected}</b></div>
-          : <div className="small" style={{ opacity:.8 }}>Tip: search a class (e.g., <code>A3</code>) or draw/select a building.</div>}
-      </div>
+      {/* Helper text */}
+      {isStaff && (
+        <div className="small" style={{ marginTop:8, opacity:.8 }}>
+          {autoMode
+            ? <>Click <b>inside</b> the {currentBuilding} shape. Adjust sensitivity if needed, then <b>Save</b>.</>
+            : <>To outline a building fast, choose it then click <b>Auto Detect</b>, and click inside the building.</>}
+        </div>
+      )}
+
+      {/* Quick select buttons for students */}
       <div className="flex" style={{ marginTop:8, flexWrap:'wrap', gap:6 }}>
         {['Building A','Building B','Building C','Technologies','Administration','Sports'].map(n=>(
           <button key={n} className="btn xs" onClick={()=>setSelected(n)}>{n}</button>
