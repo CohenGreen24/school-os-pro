@@ -2,18 +2,17 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-/** ✅ Your actual public URL (no storage calls needed) */
+/** Your public image URL */
 const MAP_URL = 'https://awxltfgbgnylacrklmik.supabase.co/storage/v1/object/public/maps/campus-map.png'
 
-/** Class code → building */
+/** Class code → building name */
 function buildingFromClass(codeRaw='') {
   const code = codeRaw.trim().toLowerCase()
   if (!code) return null
   if (/^a\d{1,2}$/.test(code)) return 'Building A'
   if (/^b\d{1,2}$/.test(code)) return 'Building B'
   if (/^c\d{1,2}$/.test(code)) return 'Building C'
-  if (code.startsWith('tech') || code.includes('technolog')) return 'Technologies'
-  if (code.includes('lab')) return 'Technologies'
+  if (code.startsWith('tech') || code.includes('technolog') || code.includes('lab')) return 'Technologies'
   if (code.includes('admin') || code.includes('principal') || code.includes('student services') || code.includes('meeting')) return 'Administration'
   if (code.includes('gym') || code.includes('studio') || code.includes('storage') || code.includes('sports')) return 'Sports'
   return null
@@ -22,22 +21,51 @@ function buildingFromClass(codeRaw='') {
 function normPoint(x, y, w, h) { return [x / w, y / h] }
 function denormPoint(nx, ny, w, h) { return [nx * w, ny * h] }
 
+/** Lazy-load OpenCV (from <script src="opencv.js">) */
+function useOpenCV() {
+  const [cvReady, setCvReady] = React.useState(false)
+  React.useEffect(() => {
+    let mounted = true
+    const check = () => {
+      if (window.cv && window.cv.Mat) {
+        mounted && setCvReady(true)
+      } else {
+        setTimeout(check, 150)
+      }
+    }
+    check()
+    return () => { mounted = false }
+  }, [])
+  return cvReady
+}
+
 export default function MapPanel({ user }) {
-  const [imgDim, setImgDim] = React.useState({ w:0, h:0 })
   const [imgOk, setImgOk]   = React.useState(true)
-  const [areas, setAreas]   = React.useState([])   // [{id,name,points[],center_x,center_y,info}]
+  const [areas, setAreas]   = React.useState([])
   const [selected, setSelected] = React.useState(null)
   const [search, setSearch] = React.useState('')
 
   const isStaff = user?.role && user.role !== 'student'
   const [drawMode, setDrawMode] = React.useState(false)
   const [drawingFor, setDrawingFor] = React.useState('Building A')
-  const [points, setPoints] = React.useState([])   // current polygon in rendered (px) space
+  const [points, setPoints] = React.useState([]) // manual points (px in current render)
+  const [imgDim, setImgDim] = React.useState({ w:0, h:0 })
 
   const imgRef = React.useRef(null)
   const svgRef = React.useRef(null)
 
-  // Load saved polygons
+  const cvReady = useOpenCV()
+
+  // --- AUTO DETECT state ---
+  const [autoMode, setAutoMode] = React.useState(false)
+  const [roi, setRoi] = React.useState(null) // {x,y,w,h} in rendered px
+  const [dragging, setDragging] = React.useState(null) // {sx,sy} start
+  const [lowThr, setLowThr] = React.useState(80)
+  const [highThr, setHighThr] = React.useState(180)
+  const [epsilonPct, setEpsilonPct] = React.useState(2.0) // approxPolyDP % of perimeter
+  const [autoPoly, setAutoPoly] = React.useState(null) // [[x,y],...]
+
+  // Load polygons
   const loadAreas = React.useCallback(async () => {
     const { data, error } = await supabase
       .from('school_map_areas')
@@ -54,17 +82,15 @@ export default function MapPanel({ user }) {
   }
   const onImgErr = () => setImgOk(false)
 
-  // Denormalize stored points to pixel coords for current render size
-  const toPixels = (normPts) => {
-    const img = imgRef.current
-    if (!img || !normPts?.length) return []
-    const rW = img.clientWidth, rH = img.clientHeight
-    return normPts.map(([nx, ny]) => denormPoint(nx, ny, rW, rH))
+  const onSearchGo = (e) => {
+    e.preventDefault()
+    const b = buildingFromClass(search)
+    if (b) setSelected(b)
   }
 
-  // Draw mode: click to add points
+  // --- Manual draw ---
   const onSvgClick = (e) => {
-    if (!drawMode) return
+    if (!drawMode || autoMode) return
     const rect = svgRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
@@ -77,7 +103,6 @@ export default function MapPanel({ user }) {
     if (!img || points.length < 3) return alert('Add at least 3 points.')
     const rW = img.clientWidth, rH = img.clientHeight
     const norm = points.map(([x, y]) => normPoint(x, y, rW, rH))
-
     const existing = areas.find(a => a.name === drawingFor)
     if (existing) {
       const { error } = await supabase
@@ -96,14 +121,14 @@ export default function MapPanel({ user }) {
     alert('Saved!')
   }
 
-  // Search → select building
-  const onSearchGo = (e) => {
-    e.preventDefault()
-    const b = buildingFromClass(search)
-    if (b) setSelected(b)
+  // --- Convert stored norm points to px for drawing ---
+  const toPixels = (normPts) => {
+    const img = imgRef.current
+    if (!img || !normPts?.length) return []
+    const rW = img.clientWidth, rH = img.clientHeight
+    return normPts.map(([nx, ny]) => denormPoint(nx, ny, rW, rH))
   }
 
-  // Center for label
   const centerPx = (area) => {
     const img = imgRef.current
     if (!img) return [0,0]
@@ -123,11 +148,114 @@ export default function MapPanel({ user }) {
 
   const renderPolys = areas.map(a => ({ ...a, pix: toPixels(a.points || []) }))
 
+  // --- ROI draw for auto mode (mouse/touch) ---
+  const onOverlayDown = (e) => {
+    if (!autoMode) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+    setDragging({ sx:x, sy:y })
+    setRoi({ x, y, w: 0, h: 0 })
+  }
+  const onOverlayMove = (e) => {
+    if (!autoMode || !dragging) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+    const x0 = Math.min(dragging.sx, x)
+    const y0 = Math.min(dragging.sy, y)
+    const w  = Math.abs(x - dragging.sx)
+    const h  = Math.abs(y - dragging.sy)
+    setRoi({ x: x0, y: y0, w, h })
+  }
+  const onOverlayUp = () => { setDragging(null) }
+
+  // --- Auto detect inside ROI using OpenCV ---
+  const runDetect = React.useCallback(() => {
+    if (!cvReady) return alert('OpenCV is still loading. Try again in a second.')
+    if (!roi || roi.w < 10 || roi.h < 10) return alert('Draw a box around a building first.')
+    const imgEl = imgRef.current
+    if (!imgEl) return
+
+    // Create a canvas the size of the rendered image
+    const rW = imgEl.clientWidth, rH = imgEl.clientHeight
+    const canvas = document.createElement('canvas')
+    canvas.width = rW; canvas.height = rH
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(imgEl, 0, 0, rW, rH)
+
+    const cv = window.cv
+    let src = cv.imread(canvas)
+    try {
+      // Crop ROI
+      const rect = new cv.Rect(Math.max(roi.x|0,0), Math.max(roi.y|0,0), Math.min(roi.w|0, rW), Math.min(roi.h|0, rH))
+      let roiMat = src.roi(rect)
+
+      // Gray → blur → canny
+      let gray = new cv.Mat()
+      cv.cvtColor(roiMat, gray, cv.COLOR_RGBA2GRAY, 0)
+      let blur = new cv.Mat()
+      cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0, 0)
+      let edges = new cv.Mat()
+      cv.Canny(blur, edges, Number(lowThr), Number(highThr))
+
+      // Find contours
+      let contours = new cv.MatVector()
+      let hierarchy = new cv.Mat()
+      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+      if (contours.size() === 0) {
+        setAutoPoly(null)
+        alert('No edges found. Try adjusting thresholds or a tighter box.')
+      } else {
+        // Pick largest contour by area (assumes the building is the dominant region in ROI)
+        let maxArea = 0, maxIdx = 0
+        for (let i = 0; i < contours.size(); i++) {
+          const a = cv.contourArea(contours.get(i))
+          if (a > maxArea) { maxArea = a; maxIdx = i }
+        }
+        const cnt = contours.get(maxIdx)
+        // Approximate polygon
+        const peri = cv.arcLength(cnt, true)
+        const eps = (Number(epsilonPct) / 100) * peri
+        let approx = new cv.Mat()
+        cv.approxPolyDP(cnt, approx, eps, true)
+
+        // Convert approx points to page coords (offset by ROI)
+        const pts = []
+        for (let i = 0; i < approx.rows; i++) {
+          const p = approx.intPtr(i)
+          const x = p[0] + roi.x
+          const y = p[1] + roi.y
+          pts.push([x, y])
+        }
+        setAutoPoly(pts)
+      }
+
+      // Cleanup
+      gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete(); roiMat.delete()
+    } catch (e) {
+      console.error(e)
+      alert('Detection failed. Try adjusting thresholds or ROI.')
+    } finally {
+      src.delete()
+    }
+  }, [cvReady, roi, lowThr, highThr, epsilonPct])
+
+  const acceptAuto = () => {
+    if (!autoPoly || autoPoly.length < 3) return
+    setPoints(autoPoly)     // move into manual points
+    setAutoPoly(null)
+    setRoi(null)
+    setAutoMode(false)
+    setDrawMode(true)       // enter manual so you can tweak points if you want
+  }
+
   return (
     <div className="glass card" style={{ padding: 10 }}>
       {/* Controls */}
       <div className="flex" style={{ justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:8 }}>
-        <form className="flex" onSubmit={onSearchGo} style={{ gap:8 }}>
+        <form className="flex" onSubmit={(e)=>{e.preventDefault(); const b=buildingFromClass(search); if(b) setSelected(b)}} style={{ gap:8 }}>
           <input
             className="input"
             placeholder="Find class or area (e.g., A2, Tech 1, Gym 1, Admin)"
@@ -135,20 +263,16 @@ export default function MapPanel({ user }) {
             onChange={e=>setSearch(e.target.value)}
             style={{ width: 320 }}
           />
-          <button className="btn btn-primary">Find</button>
+          <button className="btn btn-primary" type="submit">Find</button>
         </form>
 
         {isStaff && (
-          <div className="flex" style={{ gap:8 }}>
-            <button className="btn xs" onClick={()=>setDrawMode(m=>!m)}>
-              {drawMode ? '✅ Finish Draw' : '✏️ Draw Mode'}
-            </button>
+          <div className="flex" style={{ gap:8, flexWrap:'wrap' }}>
             <select
               className="input xs"
               value={drawingFor}
               onChange={e=>setDrawingFor(e.target.value)}
-              style={{ width:180 }}
-              title="Which building are you outlining?"
+              title="Which building?"
             >
               <option>Building A</option>
               <option>Building B</option>
@@ -157,22 +281,55 @@ export default function MapPanel({ user }) {
               <option>Administration</option>
               <option>Sports</option>
             </select>
+
+            {/* Manual draw */}
+            <button className="btn xs" onClick={()=>{ setDrawMode(m=>!m); setAutoMode(false) }}>
+              {drawMode ? '✅ Finish Draw' : '✏️ Manual Draw'}
+            </button>
             {drawMode && (
               <>
-                <button className="btn xs" onClick={undoPoint} type="button">Undo</button>
-                <button className="btn xs" onClick={clearPoints} type="button">Clear</button>
-                <button className="btn xs btn-primary" onClick={savePolygon} type="button">Save</button>
+                <button className="btn xs" type="button" onClick={undoPoint}>Undo</button>
+                <button className="btn xs" type="button" onClick={clearPoints}>Clear</button>
+                <button className="btn xs btn-primary" type="button" onClick={savePolygon}>Save</button>
               </>
             )}
+
+            {/* Auto detect */}
+            <button className="btn xs" onClick={()=>{ setAutoMode(a=>!a); setDrawMode(false); setAutoPoly(null) }}>
+              {autoMode ? '✅ Finish Auto' : '✨ Auto Detect'}
+            </button>
           </div>
         )}
       </div>
+
+      {/* Auto controls */}
+      {isStaff && autoMode && (
+        <div className="glass card autoPanel" style={{ marginBottom:8 }}>
+          <div className="small" style={{ marginBottom:6 }}>
+            Drag a rectangle over a building, then adjust thresholds and click <b>Detect</b>.
+          </div>
+          <div className="flex" style={{ gap:10, flexWrap:'wrap', alignItems:'center' }}>
+            <label className="small">Low: {lowThr}
+              <input type="range" min="0" max="255" value={lowThr} onChange={e=>setLowThr(e.target.value)} />
+            </label>
+            <label className="small">High: {highThr}
+              <input type="range" min="0" max="255" value={highThr} onChange={e=>setHighThr(e.target.value)} />
+            </label>
+            <label className="small">Simplify: {epsilonPct}%
+              <input type="range" min="0" max="8" step="0.2" value={epsilonPct} onChange={e=>setEpsilonPct(e.target.value)} />
+            </label>
+            <button className="btn xs" type="button" onClick={runDetect} disabled={!cvReady}>Detect</button>
+            <button className="btn xs btn-primary" type="button" onClick={acceptAuto} disabled={!autoPoly || autoPoly.length<3}>Accept</button>
+            <span className="small" style={{ opacity:.8 }}>{cvReady ? 'OpenCV ready' : 'Loading OpenCV…'}</span>
+          </div>
+        </div>
+      )}
 
       {/* Map */}
       <div style={{ position:'relative', width:'100%', overflow:'hidden', borderRadius:12 }}>
         {!imgOk && (
           <div className="glass card small" style={{ marginBottom:6, color:'#ef4444' }}>
-            Image failed to load. Check URL and that the bucket/file are public.
+            Image failed to load. Check the MAP_URL.
           </div>
         )}
         <img
@@ -180,14 +337,21 @@ export default function MapPanel({ user }) {
           src={MAP_URL}
           alt="School map"
           onLoad={onImgLoad}
-          onError={onImgErr}
+          onError={()=>setImgOk(false)}
           style={{ width:'100%', height:'auto', display:'block', userSelect:'none' }}
         />
         <svg
           ref={svgRef}
+          onMouseDown={onOverlayDown}
+          onMouseMove={onOverlayMove}
+          onMouseUp={onOverlayUp}
+          onTouchStart={onOverlayDown}
+          onTouchMove={onOverlayMove}
+          onTouchEnd={onOverlayUp}
           onClick={onSvgClick}
-          style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents: drawMode ? 'auto':'none' }}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents: (drawMode || autoMode) ? 'auto':'none' }}
         >
+          {/* Saved polygons */}
           {renderPolys.map(a => {
             if (!a.pix.length) return null
             const d = 'M ' + a.pix.map(([x,y])=>`${x},${y}`).join(' L ') + ' Z'
@@ -203,23 +367,46 @@ export default function MapPanel({ user }) {
                   strokeWidth={active ? 3 : 2}
                 />
                 <foreignObject x={cx-60} y={cy-16} width="120" height="32" style={{ pointerEvents:'none' }}>
-                  <div className="badge" style={{ justifyContent:'center', fontWeight:700, textAlign:'center' }}>
-                    {a.name}
-                  </div>
+                  <div className="badge" style={{ justifyContent:'center', fontWeight:700, textAlign:'center' }}>{a.name}</div>
                 </foreignObject>
               </g>
             )
           })}
 
-          {/* Drawing preview */}
+          {/* Manual points preview */}
           {drawMode && points.length > 0 && (
             <>
               <polyline
                 points={points.map(([x,y])=>`${x},${y}`).join(' ')}
                 fill="rgba(14,165,233,0.18)"
-                stroke="rgba(14,165,233,1)" strokeWidth="2"
+                stroke="rgba(14,165,233,1)"
+                strokeWidth="2"
               />
               {points.map(([x,y],i)=>(
+                <circle key={i} cx={x} cy={y} r="4" fill="rgba(14,165,233,1)" />
+              ))}
+            </>
+          )}
+
+          {/* Auto ROI rectangle */}
+          {autoMode && roi && (
+            <rect
+              x={roi.x} y={roi.y} width={roi.w} height={roi.h}
+              fill="rgba(14,165,233,0.12)" stroke="rgba(14,165,233,0.9)" strokeWidth="2"
+              strokeDasharray="6 4"
+            />
+          )}
+
+          {/* Auto detected polygon preview (cyan) */}
+          {autoMode && autoPoly && autoPoly.length>2 && (
+            <>
+              <polyline
+                points={autoPoly.map(([x,y])=>`${x},${y}`).join(' ')}
+                fill="rgba(14,165,233,0.18)"
+                stroke="rgba(14,165,233,1)"
+                strokeWidth="2"
+              />
+              {autoPoly.map(([x,y],i)=>(
                 <circle key={i} cx={x} cy={y} r="4" fill="rgba(14,165,233,1)" />
               ))}
             </>
@@ -227,12 +414,12 @@ export default function MapPanel({ user }) {
         </svg>
       </div>
 
+      {/* Selected info + quick buttons */}
       <div style={{ marginTop:8 }}>
         {selected
           ? <div className="small">Selected: <b>{selected}</b></div>
-          : <div className="small" style={{ opacity:.8 }}>Tip: search a class (e.g., <code>A3</code>) or tap a building.</div>}
+          : <div className="small" style={{ opacity:.8 }}>Tip: search a class (e.g., <code>A3</code>) or draw/select a building.</div>}
       </div>
-
       <div className="flex" style={{ marginTop:8, flexWrap:'wrap', gap:6 }}>
         {['Building A','Building B','Building C','Technologies','Administration','Sports'].map(n=>(
           <button key={n} className="btn xs" onClick={()=>setSelected(n)}>{n}</button>

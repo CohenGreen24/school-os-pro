@@ -413,3 +413,8 @@ label.small{ display:block; margin:0 0 4px 2px; color: var(--muted); }
 .building { transition: transform .2s ease, filter .2s ease; transform-origin: 50% 50%; }
 @keyframes bob { 0%{transform:translateY(0)} 50%{transform:translateY(-0.5px)} 100%{transform:translateY(0)} }
 .building.selected { animation: bob 1200ms ease-in-out infinite; }
+/* Auto-detect panel sliders */
+.autoPanel input[type="range"]{
+  vertical-align: middle;
+  margin-left: 6px;
+}
