@@ -2,210 +2,172 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-const Money = ({ n }) => <b>${(Number(n) || 0).toFixed(2)}</b>
-
-/** Stable, food-accurate fallbacks for your 12 menu items */
-const FALLBACK_IMG = {
-  'Chicken Wrap':       'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Chicken_wrap.jpg/640px-Chicken_wrap.jpg',
-  'Veggie Wrap':        'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Veggie_wraps.jpg/640px-Veggie_wraps.jpg',
-  'Beef Burger':        'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Hamburger_%28black_bg%29.jpg/640px-Hamburger_%28black_bg%29.jpg',
-  'Grilled Cheese':     'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Grilled_Cheese_sandwich.jpg/640px-Grilled_Cheese_sandwich.jpg',
-  'Pasta Salad':        'https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Pasta_salad_with_tuna_and_eggs.jpg/640px-Pasta_salad_with_tuna_and_eggs.jpg',
-  'Fruit Cup':          'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Fruit_salad_in_a_glass_bowl.jpg/640px-Fruit_salad_in_a_glass_bowl.jpg',
-  'Yogurt Parfait':     'https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Yogurt_parfait.jpg/640px-Yogurt_parfait.jpg',
-  'Sushi Roll (4pc)':   'https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Sushi_platter.jpg/640px-Sushi_platter.jpg',
-  'Chicken Fried Rice': 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Chicken_fried_rice.jpg/640px-Chicken_fried_rice.jpg',
-  'Caesar Salad':       'https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Caesar_salad_%281%29.jpg/640px-Caesar_salad_%281%29.jpg',
-  'Pumpkin Soup':       'https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Pumpkin_soup.jpg/640px-Pumpkin_soup.jpg',
-  'Iced Tea':           'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Iced_tea_glass.jpg/640px-Iced_tea_glass.jpg',
-  'Bottled Water':      'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Bottled_water.jpg/640px-Bottled_water.jpg'
+const FALLBACKS = {
+  'Chicken Wrap': 'https://images.unsplash.com/photo-1550317138-10000687a72b?w=800&q=80',
+  'Beef Burger': 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=800&q=80',
+  'Veggie Pizza': 'https://images.unsplash.com/photo-1548365328-9f547fb09530?w=800&q=80',
+  'Pasta Salad': 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&q=80',
+  'Fruit Cup': 'https://images.unsplash.com/photo-1546549039-5e5f20f3a4d2?w=800&q=80',
+  'Sushi Pack': 'https://images.unsplash.com/photo-1553621042-f6e147245754?w=800&q=80',
+  'Chicken Salad': 'https://images.unsplash.com/photo-1568158879083-c4280a26d2e7?w=800&q=80',
+  'Ham & Cheese Sandwich': 'https://images.unsplash.com/photo-1547130542-16256d7061a7?w=800&q=80',
+  'Yogurt Parfait': 'https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?w=800&q=80',
+  'Bottled Water': 'https://images.unsplash.com/photo-1516408388733-2f83604f5d6a?w=800&q=80',
+  'Orange Juice': 'https://images.unsplash.com/photo-1551024709-8f23befc6cf7?w=800&q=80',
+  'Chocolate Muffin': 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&q=80'
 }
 
 export default function Lunch({ user }) {
-  const [menu, setMenu] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError] = React.useState('')
+  const [items, setItems] = React.useState([])
+  const [cart, setCart] = React.useState([]) // [{id, item_name, price, qty, image_url}]
   const [wallet, setWallet] = React.useState(0)
-  const [cart, setCart] = React.useState({}) // { [id]: { item, qty } }
+  const [placing, setPlacing] = React.useState(false)
 
-  const total = React.useMemo(
-    () => Object.values(cart).reduce((s, c) => s + (Number(c.item.price || 0) * c.qty), 0),
-    [cart]
-  )
+  // Load menu + wallet
+  React.useEffect(() => {
+    (async () => {
+      const { data: menu, error: mErr } = await supabase
+        .from('lunch_menu')
+        .select('id,item_name,price,image_url,is_active')
+        .order('item_name', { ascending: true })
 
-  const fetchMenu = React.useCallback(async () => {
-    // Try multiple column shapes (name vs item_name) and is_active presence
-    const shapes = [
-      { sel: 'id,name,price,image_url,is_active', active: true },
-      { sel: 'id,name:item_name,price,image_url,is_active', active: true },
-      { sel: 'id,name,price,image_url', active: false },
-      { sel: 'id,name:item_name,price,image_url', active: false },
-    ]
-    for (const s of shapes) {
-      try {
-        let q = supabase.from('lunch_menu').select(s.sel).order('name', { ascending: true }).limit(32)
-        if (s.active) q = q.eq('is_active', true)
-        const { data, error } = await q
-        if (!error && Array.isArray(data)) return data
-      } catch { /* try next */ }
-    }
-    return []
-  }, [])
+      if (!mErr) setItems((menu||[]).filter(x => x.is_active !== false))
 
-  const refresh = React.useCallback(async () => {
-    setLoading(true); setError('')
-    try {
       if (user?.id) {
-        const { data: w } = await supabase
+        const { data: w, error: wErr } = await supabase
           .from('wallets')
           .select('balance')
           .eq('user_id', user.id)
           .maybeSingle()
-        setWallet(w?.balance ?? 0)
-      } else setWallet(0)
+        if (!wErr && w) setWallet(Number(w.balance)||0)
+      }
+    })()
+  }, [user?.id])
 
-      const items = await fetchMenu()
-      setMenu(items || [])
-    } catch (e) {
-      setError(e.message || 'Failed to load lunch menu')
-      setMenu([])
-    } finally {
-      setLoading(false)
-    }
-  }, [user?.id, fetchMenu])
-
-  React.useEffect(() => { refresh() }, [refresh])
-
-  // cart ops
-  const addOne = (item) => setCart(c => ({ ...c, [item.id]: { item, qty: (c[item.id]?.qty || 0) + 1 } }))
-  const subOne = (item) => setCart(c => {
-    const prev = c[item.id]; if (!prev) return c
-    const qty = prev.qty - 1; const n = { ...c }
-    if (qty <= 0) delete n[item.id]; else n[item.id] = { item, qty }
-    return n
-  })
-  const clearCart = () => setCart({})
-  const removeItem = (id) => setCart(c => { const n = { ...c }; delete n[id]; return n })
-
-  const placeOrder = async () => {
-    if (!user?.id) return alert('Please sign in.')
-    if (!Object.keys(cart).length) return
-    const items = Object.values(cart)
-    const sum = items.reduce((s, c) => s + (Number(c.item.price || 0) * c.qty), 0)
-    if (wallet < sum) return alert('Insufficient wallet balance.')
-
-    const rows = items.map(c => ({ user_id: user.id, item_id: c.item.id, qty: c.qty }))
-    const { error: e1 } = await supabase.from('lunch_orders').insert(rows)
-    if (e1) return alert(`Order failed: ${e1.message}`)
-
-    const { error: e2 } = await supabase.from('wallets').update({ balance: wallet - sum }).eq('user_id', user.id)
-    if (e2) return alert(`Wallet update failed: ${e2.message}`)
-
-    setWallet(w => w - sum); clearCart(); alert('Order placed! 👌')
+  const add = (it) => {
+    setCart(prev => {
+      const i = prev.findIndex(x => x.id===it.id)
+      if (i>=0) {
+        const next = [...prev]; next[i].qty += 1; return next
+      }
+      return [...prev, { id: it.id, item_name: it.item_name, price: Number(it.price)||0, qty:1, image_url: it.image_url }]
+    })
+  }
+  const sub = (it) => {
+    setCart(prev => {
+      const i = prev.findIndex(x => x.id===it.id)
+      if (i<0) return prev
+      const next = [...prev]
+      if (next[i].qty>1) next[i].qty -= 1
+      else next.splice(i,1)
+      return next
+    })
   }
 
-  // 4×4 cap
-  const gridItems = (menu || []).slice(0, 16)
+  const total = cart.reduce((a,c)=> a + c.price * c.qty, 0).toFixed(2)
 
-  /** Image with robust fallback to a relevant photo; never leaves a broken icon */
-  const Img = ({ name, url }) => {
-    const [src, setSrc] = React.useState(url || FALLBACK_IMG[name] || FALLBACK_IMG['Fruit Cup'])
-    React.useEffect(() => {
-      setSrc(url || FALLBACK_IMG[name] || FALLBACK_IMG['Fruit Cup'])
-    }, [name, url])
-    return (
-      <img
-        className="compactImg"
-        src={src}
-        alt={name}
-        onError={() => {
-          const fb = FALLBACK_IMG[name] || FALLBACK_IMG['Fruit Cup']
-          if (src !== fb) setSrc(fb)
-        }}
-      />
-    )
+  const placeOrder = async () => {
+    if (!user?.id) return alert('Login required.')
+    if (cart.length===0) return alert('Your cart is empty.')
+    if (Number(total) > Number(wallet)) return alert('Insufficient wallet balance.')
+    setPlacing(true)
+    try {
+      // 1) insert order rows
+      const rows = cart.map(c => ({
+        user_id: user.id,
+        item_id: c.id,
+        qty: c.qty
+      }))
+      const { error: oErr } = await supabase.from('lunch_orders').insert(rows)
+      if (oErr) throw oErr
+      // 2) decrement wallet
+      const { error: wErr } = await supabase.rpc('decrement_wallet', { p_user_id: user.id, p_amount: Number(total) })
+      if (wErr) throw wErr
+      setWallet(w => (Number(w) - Number(total)))
+      setCart([])
+      alert('Order placed ✔️')
+    } catch (e) {
+      console.error(e)
+      alert(e.message || 'Order failed')
+    } finally {
+      setPlacing(false)
+    }
   }
 
   return (
-    <div className="lunchPanel">
-      <div className="glass lunchShell">
-        {/* LEFT — scrollable menu */}
-        <div className="lunchLeft">
-          {loading && <div className="small">Loading menu…</div>}
-          {error && <div className="small" style={{ color: '#ef4444' }}>{error}</div>}
+    <div className="glass card">
+      <div className="lunchLayout">
+        {/* Left: 4×4 grid */}
+        <section className="glass card" style={{padding:10}}>
+          <div className="lunchHead" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <div className="pill">Wallet: ${Number(wallet).toFixed(2)}</div>
+            <div className="small" style={{opacity:.8}}>Tap +/− to add/remove</div>
+          </div>
 
-          <div className="lunchGridFixed">
-            {gridItems.map(item => {
-              const qty = cart[item.id]?.qty || 0
-              const name = item.name ?? item.item_name ?? 'Item'
+          <div className="menuGrid">
+            {items.slice(0,16).map(it => {
+              const img = it.image_url || FALLBACKS[it.item_name] || 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800&q=60'
+              const inCart = cart.find(c => c.id===it.id)
               return (
-                <div className="lunchCardCompact glass" key={item.id}>
-                  <div className="compactImgWrap">
-                    <Img name={name} url={item.image_url} />
+                <article key={it.id} className="lunchCard">
+                  <div className="lunchImgWrap">
+                    <img className="lunchImg"
+                         src={img}
+                         alt={it.item_name}
+                         referrerPolicy="no-referrer" />
                   </div>
-
-                  <div className="compactMeta">
-                    <div className="compactTitle" title={name}>{name}</div>
-                    <div className="compactPrice"><Money n={item.price} /></div>
+                  <div className="lunchBody">
+                    <div className="lunchRow">
+                      <div className="itemName" style={{fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={it.item_name}>
+                        {it.item_name}
+                      </div>
+                      <div className="price">${Number(it.price).toFixed(2)}</div>
+                    </div>
+                    <div className="lunchRow">
+                      <div className="qtyCtrl">
+                        <button className="qtyBtn" onClick={()=>sub(it)} aria-label="decrease">−</button>
+                        <div className="qtyNum">{inCart?.qty || 0}</div>
+                        <button className="qtyBtn" onClick={()=>add(it)} aria-label="increase">+</button>
+                      </div>
+                      <button className="btn xs" onClick={()=>add(it)}>Add</button>
+                    </div>
                   </div>
-
-                  {/* Controls stay inside the card */}
-                  <div className="compactControls">
-                    <button className="btn xs" onClick={() => subOne(item)} aria-label={`Decrease ${name}`}>−</button>
-                    <div className="qty">{qty}</div>
-                    <button className="btn xs" onClick={() => addOne(item)} aria-label={`Increase ${name}`}>+</button>
-                  </div>
-                </div>
+                </article>
               )
             })}
-
-            {(!loading && gridItems.length === 0) && (
-              <div className="small" style={{ gridColumn: '1/-1', opacity:.8 }}>
-                No items available. Check <code>public.lunch_menu</code>.
-              </div>
-            )}
           </div>
-        </div>
+        </section>
 
-        {/* RIGHT — compact cart with its own scroll */}
-        <div className="lunchRight glass card">
+        {/* Right: Cart */}
+        <aside className="glass card cartPanel">
           <div className="cartHeader">
-            <span className="badge">Wallet: <Money n={wallet} /></span>
-            {Object.keys(cart).length > 0 && <button className="btn xs" onClick={clearCart}>Clear</button>}
+            <h3 style={{margin:'2px 0'}}>Cart</h3>
+            <span className="badge">Items: {cart.reduce((a,c)=>a+c.qty,0)}</span>
           </div>
 
-          <div className="cartTitle">Cart</div>
           <div className="cartList">
-            {Object.values(cart).length === 0 && (
-              <div className="small" style={{ opacity:.8 }}>No items yet. Tap + to add.</div>
-            )}
-            {Object.values(cart).map(({ item, qty }) => {
-              const name = item.name ?? item.item_name ?? 'Item'
-              return (
-                <div className="cartLineItem" key={item.id}>
-                  {qty} × {name}
-                  <span className="cartLineBtns">
-                    <button className="btn xs" onClick={() => subOne(item)}>-</button>
-                    <button className="btn xs" onClick={() => addOne(item)}>+</button>
-                    <button className="btn xs" onClick={() => removeItem(item.id)}>✕</button>
-                  </span>
+            {cart.length===0 && <div className="small" style={{opacity:.7}}>Nothing here yet.</div>}
+            {cart.map(c => (
+              <div className="cartItem" key={c.id}>
+                <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                  <strong>{c.qty}×</strong> {c.item_name}
                 </div>
-              )
-            })}
+                <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                  <span>${(c.price*c.qty).toFixed(2)}</span>
+                  <button className="btn xs" onClick={()=>sub({id:c.id})}>−</button>
+                  <button className="btn xs" onClick={()=>add({id:c.id, item_name:c.item_name, price:c.price})}>+</button>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="cartFooter">
-            <span> Total = <Money n={total} /> </span>
-            <button
-              className="btn btn-primary"
-              disabled={total <= 0 || total > wallet}
-              onClick={placeOrder}
-              style={{ marginLeft: 10 }}  // nudge to the right
-            >
-              Order
+          <div className="cartTotal">
+            <span>Total: ${total}</span>
+            <button className="btn btn-primary btn-order" disabled={placing || cart.length===0} onClick={placeOrder}>
+              {placing ? 'Ordering…' : 'Order'}
             </button>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   )
