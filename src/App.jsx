@@ -1,20 +1,27 @@
-// src/App.jsx
+// src/App.jsx — DROP-IN
 import React from 'react'
 import { supabase } from './supabase'
+
+// Pages (make sure these exist)
 import Login from './components/Login'
 import Overview from './components/Overview'
 import Profile from './components/Profile'
 import Calendar from './components/Calendar'
-import Assignments from './components/Assignments'   // keep your existing or stub
-import Wallet from './components/Wallet'             // keep your existing or stub
-import Library from './components/Library'           // keep your existing or stub
-import Appointments from './components/Appointments' // keep your existing or stub
+import Assignments from './components/Assignments'
+import Wallet from './components/Wallet'
+import Library from './components/Library'
+import Appointments from './components/Appointments'
 import BulletinBoard from './components/BulletinBoard'
 import MapPanel from './components/MapPanel'
 import Lunch from './components/Lunch'
 import AdminPanel from './components/AdminPanel'
-import { useUserSetting } from './hooks/useSettings'
 
+// Theme (Supabase-backed)
+import ThemeControls from './components/ThemeControls'
+
+// -----------------------------
+// Page list & visibility rules
+// -----------------------------
 const PAGES = [
   { key:'overview',    icon:'🏠', label:'Overview' },
   { key:'profile',     icon:'👤', label:'Profile' },
@@ -29,11 +36,14 @@ const PAGES = [
   { key:'admin',       icon:'🛠️', label:'Admin' },
 ]
 
+// -----------------------------
+// Sidebar (icon + label only)
+// -----------------------------
 function Sidebar({ user, page, setPage }) {
-  const { value: order, setValue: saveOrder } = useUserSetting(user,'sidebar_order', PAGES.map(p=>p.key))
-  const list = (order && Array.isArray(order) ? order : PAGES.map(p=>p.key))
-    .map(k => PAGES.find(x=>x.key===k)).filter(Boolean)
-    .filter(p => (p.key!=='admin') ? true : ['admin','teacher'].includes(user?.role))
+  const visible = PAGES.filter(p => {
+    if (p.key !== 'admin') return true
+    return ['admin','teacher','wellbeing'].includes(user?.role)
+  })
 
   return (
     <nav className="glass card sidebarNav">
@@ -43,10 +53,15 @@ function Sidebar({ user, page, setPage }) {
           <div className="subtitle small">School OS</div>
         </div>
       </div>
+
       <div className="nav">
-        {list.map(p => (
-          <div key={p.key} className={`navItem ${page===p.key?'active':''}`} onClick={()=>setPage(p.key)}>
-            <div className="navIcon">{p.icon}</div>
+        {visible.map(p => (
+          <div
+            key={p.key}
+            className={`navItem ${page === p.key ? 'active' : ''}`}
+            onClick={() => setPage(p.key)}
+          >
+            <div className="navIcon" aria-hidden>{p.icon}</div>
             <div className="navLabel">{p.label}</div>
           </div>
         ))}
@@ -55,60 +70,80 @@ function Sidebar({ user, page, setPage }) {
   )
 }
 
-function Topbar({ user, theme, setTheme, onLogout }) {
-  const toggle = () => setTheme(theme==='dark'?'light':'dark')
+// -----------------------------
+// Topbar (ThemeControls + Logout)
+// -----------------------------
+function Topbar({ user, onLogout }) {
   return (
     <div className="glass card topbar">
       <div className="brand"><strong>EduGate</strong></div>
       <div className="headerRight">
         {user && <span className="small pill">{user.name} • {user.role}</span>}
-        <select className="input xs" value={theme} onChange={e=>setTheme(e.target.value)}>
-          <option value="light">Classic</option>
-          <option value="dark">Dark</option>
-        </select>
-        <div className={`switch ${theme==='dark'?'on':''}`} onClick={toggle}><div className="knob"/></div>
-        {user && <button className="btn xs" onClick={onLogout}>Logout</button>}
+        {/* ThemeControls stores palette+mode in Supabase for this user */}
+        <ThemeControls user={user} />
+        {user && (
+          <button className="btn xs" onClick={onLogout}>
+            Logout
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-function useThemeOnSupabase(user) {
-  const { value: theme, setValue: saveTheme } = useUserSetting(user, 'theme', 'light')
-  React.useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme==='dark')
-  }, [theme])
-  return [theme, saveTheme]
-}
-
+// -----------------------------
+// App Shell
+// -----------------------------
 export default function App() {
-  const [user,setUser] = React.useState(null)
-  const [page,setPage] = React.useState('overview')
-  const [theme,setTheme] = useThemeOnSupabase(user)
+  const [user, setUser] = React.useState(null)
+  const [page, setPage] = React.useState('overview')
 
-  const logout = ()=> { setUser(null); setPage('overview') }
+  const handleLogout = () => {
+    setUser(null)
+    setPage('overview')
+  }
 
-  if (!user) return <Login onLogin={(u)=>{ setUser(u); setPage('overview') }} />
+  // Optional: prefetch some lightweight project health (not required)
+  React.useEffect(() => {
+    // Ensure we have a wallet row for logged-in user (nice-to-have)
+    const ensureWallet = async () => {
+      if (!user?.id) return
+      await supabase.from('wallets').insert({ user_id: user.id, balance: 0 }).select().single().then(() => {}).catch(()=>{})
+    }
+    ensureWallet()
+  }, [user?.id])
+
+  if (!user) {
+    return (
+      <div className="container">
+        <Topbar user={null} onLogout={handleLogout} />
+        <Login onLogin={(u) => { setUser(u); setPage('overview') }} />
+      </div>
+    )
+  }
 
   return (
     <div className="container">
-      <Topbar user={user} theme={theme} setTheme={setTheme} onLogout={logout}/>
+      <Topbar user={user} onLogout={handleLogout} />
+
       <div className="layout">
-        <Sidebar user={user} page={page} setPage={setPage}/>
+        <Sidebar user={user} page={page} setPage={setPage} />
+
         <main className="content">
-          {page==='overview'    && <Overview user={user} go={setPage}/>}
-          {page==='profile'     && <Profile user={user}/>}
-          {page==='calendar'    && <Calendar user={user}/>}
-          {page==='assignments' && <Assignments user={user}/>}
-          {page==='wallet'      && <Wallet user={user}/>}
-          {page==='library'     && <Library user={user}/>}
-          {page==='appointments'&& <Appointments user={user}/>}
-          {page==='bulletin'    && <BulletinBoard user={user}/>}
-          {page==='map'         && <MapPanel user={user}/>}
-          {page==='lunch'       && <Lunch user={user}/>}
-          {page==='admin'       && <AdminPanel user={user}/>}
+          {page === 'overview'     && <Overview user={user} go={setPage} />}
+          {page === 'profile'      && <Profile user={user} />}
+          {page === 'calendar'     && <Calendar user={user} />}
+          {page === 'assignments'  && <Assignments user={user} />}
+          {page === 'wallet'       && <Wallet user={user} />}
+          {page === 'library'      && <Library user={user} />}
+          {page === 'appointments' && <Appointments user={user} />}
+          {page === 'bulletin'     && <BulletinBoard user={user} />}
+          {page === 'map'          && <MapPanel user={user} />}
+          {page === 'lunch'        && <Lunch user={user} />}
+          {page === 'admin'        && <AdminPanel user={user} />}
         </main>
       </div>
+
       <div className="footer small">© School OS Demo</div>
     </div>
   )

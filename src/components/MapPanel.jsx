@@ -2,152 +2,153 @@
 import React from 'react'
 import { supabase } from '../supabase'
 
-/** Cache-busted map URL (bump VER when you replace the image) */
-const MAP_VER = 'v5'
+const MAP_VER = 'v6'
 const MAP_URL = `https://awxltfgbgnylacrklmik.supabase.co/storage/v1/object/public/maps/campus-map.png?${MAP_VER}`
 
-function normPoint(x, y, w, h) { return [x / w, y / h] }
-function denormPoint(nx, ny, w, h) { return [nx * w, ny * h] }
+function norm([x,y], w, h){ return [x/w, y/h] }
+function denorm([nx,ny], w, h){ return [nx*w, ny*h] }
+
+const BUILDINGS = [
+  'Building A', 'Building B', 'Building C',
+  'Technologies', 'Administration', 'Sports'
+]
 
 export default function MapPanel({ user }) {
-  const isStaff = user?.role && user.role !== 'student'
-
-  const [areas, setAreas] = React.useState([])
-  const [selected, setSelected] = React.useState(null)
-  const [currentBuilding, setCurrentBuilding] = React.useState('Building A')
-  const [edgeSnap, setEdgeSnap] = React.useState(false)
-
-  const [previewPts, setPreviewPts] = React.useState([]) // points in rendered px
-  const [imgOk, setImgOk] = React.useState(true)
-
+  const isStaff = ['admin','teacher','wellbeing'].includes(user?.role)
   const imgRef = React.useRef(null)
   const svgRef = React.useRef(null)
 
-  // gradient magnitude cache (rendered size)
-  const [grad, setGrad] = React.useState(null) // {w,h,data:Float32Array, max:number}
+  const [areas, setAreas] = React.useState([])   // {id,name,points:[[nx,ny]...]}
+  const [sel, setSel] = React.useState('Building A')
+  const [editing, setEditing] = React.useState(false)
+  const [pointsPx, setPointsPx] = React.useState([]) // current polygon in pixels
+  const [search, setSearch] = React.useState('')
 
-  React.useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from('school_map_areas')
-        .select('id,name,points,center_x,center_y,info')
-        .order('name', { ascending: true })
-      if (!error && Array.isArray(data)) setAreas(data)
-    })()
-  }, [])
+  React.useEffect(()=>{ (async()=>{
+    const { data } = await supabase.from('school_map_areas').select('id,name,points').order('name')
+    setAreas(data||[])
+  })() },[])
 
-  const computeGradient = () => {
+  // when selection changes, load polygon → px
+  React.useEffect(()=>{
     const img = imgRef.current
     if (!img) return
-    const w = img.clientWidth, h = img.clientHeight
-    const canvas = document.createElement('canvas')
-    canvas.width = w; canvas.height = h
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.drawImage(img, 0, 0, w, h)
-    const imgData = ctx.getImageData(0,0,w,h)
-    const g = sobelMagnitude(imgData, w, h)
-    setGrad(g)
-  }
+    const found = areas.find(a => a.name===sel)
+    const rW = img.clientWidth, rH = img.clientHeight
+    if (found?.points?.length) setPointsPx(found.points.map(p => denorm(p, rW, rH)))
+    else setPointsPx([])
+  }, [sel, areas])
 
-  const onImgLoad = () => { setImgOk(true); setTimeout(computeGradient, 0) }
-  const onImgErr  = () => setImgOk(false)
-
-  // helpers
-  const toPixels = (normPts) => {
+  const onImgLoad = () => {
+    // reproject current selection if needed
+    const found = areas.find(a => a.name===sel)
+    if (!found?.points?.length) return
     const img = imgRef.current
-    if (!img || !normPts?.length) return []
     const rW = img.clientWidth, rH = img.clientHeight
-    return normPts.map(([nx, ny]) => denormPoint(nx, ny, rW, rH))
-  }
-  const centerPx = (area) => {
-    const img = imgRef.current; if (!img) return [0,0]
-    const rW = img.clientWidth, rH = img.clientHeight
-    if (area.center_x != null && area.center_y != null) {
-      return denormPoint(Number(area.center_x), Number(area.center_y), rW, rH)
-    }
-    if (Array.isArray(area.points) && area.points.length) {
-      const xs = area.points.map(p => p[0])
-      const ys = area.points.map(p => p[1])
-      const cx = xs.reduce((a,b)=>a+b,0)/xs.length
-      const cy = ys.reduce((a,b)=>a+b,0)/ys.length
-      return denormPoint(cx, cy, rW, rH)
-    }
-    return [0,0]
+    setPointsPx(found.points.map(p => denorm(p, rW, rH)))
   }
 
-  const renderPolys = areas.map(a => ({ ...a, pix: toPixels(a.points || []) }))
-
-  // Edge-snap click handler
-  const onMapPointerDown = (e) => {
-    if (!edgeSnap) return
-    const svg = svgRef.current
-    if (!svg || !grad) return
-    const pt = ('clientX' in e) ? e : (e.touches ? e.touches[0] : null)
-    if (!pt) return
+  // Add vertex by clicking on an edge midpoint
+  const onSvgClick = (e) => {
+    if (!editing) return
+    const svg = svgRef.current; if (!svg) return
     const rect = svg.getBoundingClientRect()
-    const x = Math.round(pt.clientX - rect.left)
-    const y = Math.round(pt.clientY - rect.top)
-    const snapped = snapToEdge(grad, x, y, 22) // search radius ~ 22px
-    if (!snapped) return
-    setPreviewPts(prev => [...prev, snapped])
+    const x = e.clientX - rect.left, y = e.clientY - rect.top
+    // insert at nearest edge
+    if (pointsPx.length < 2) { setPointsPx([...pointsPx, [x,y]]); return }
+    let bestI=0, bestD=1e12
+    for (let i=0;i<pointsPx.length;i++){
+      const a = pointsPx[i], b = pointsPx[(i+1)%pointsPx.length]
+      const d = pointToSegment(x,y,a,b)
+      if (d < bestD){ bestD=d; bestI=i }
+    }
+    const next = [...pointsPx]
+    next.splice(bestI+1, 0, [x,y])
+    setPointsPx(next)
   }
 
-  const undo = () => setPreviewPts(p => p.slice(0, -1))
-  const clear = () => setPreviewPts([])
+  // Drag handles
+  const dragIx = React.useRef(-1)
+  const onHandleDown = (i) => (e) => {
+    if (!editing) return
+    dragIx.current = i
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp, { once:true })
+  }
+  const onMove = (e) => {
+    const svg = svgRef.current; if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    const x = e.clientX - rect.left, y = e.clientY - rect.top
+    setPointsPx(prev => {
+      const next=[...prev]; if (dragIx.current>=0) next[dragIx.current]=[x,y]; return next
+    })
+  }
+  const onUp = () => {
+    dragIx.current = -1
+    window.removeEventListener('pointermove', onMove)
+  }
+
+  const undo = () => setPointsPx(p => p.slice(0,-1))
+  const clear = () => setPointsPx([])
+
   const save = async () => {
-    const img = imgRef.current
-    if (!img || previewPts.length < 3) return alert('Add at least 3 points.')
-    const rW = img.clientWidth, rH = img.clientHeight
-    const norm = previewPts.map(([x, y]) => normPoint(x, y, rW, rH))
-    const existing = areas.find(a => a.name === currentBuilding)
+    const img = imgRef.current; if (!img) return
+    if (pointsPx.length < 3) return alert('Add at least 3 points.')
+    const normPts = pointsPx.map(p => norm(p, img.clientWidth, img.clientHeight))
+    const exists = areas.find(a => a.name===sel)
     try {
-      if (existing) {
-        const { error } = await supabase
-          .from('school_map_areas')
-          .update({ points: norm, updated_at: new Date().toISOString() })
-          .eq('id', existing.id)
-        if (error) throw error
+      if (exists) {
+        await supabase.from('school_map_areas').update({ points: normPts, updated_at: new Date().toISOString() }).eq('id', exists.id)
       } else {
-        const { error } = await supabase
-          .from('school_map_areas')
-          .insert({ name: currentBuilding, points: norm })
-        if (error) throw error
+        await supabase.from('school_map_areas').insert({ name: sel, points: normPts })
       }
-      setPreviewPts([])
-      const { data } = await supabase.from('school_map_areas')
-        .select('id,name,points').order('name')
-      setAreas(data || [])
-      alert(`Saved outline for ${currentBuilding}`)
+      const { data } = await supabase.from('school_map_areas').select('id,name,points').order('name')
+      setAreas(data||[])
+      setEditing(false)
+      alert('Saved ✔️')
     } catch (e) {
-      console.error(e)
-      alert(e.message || 'Save failed')
+      console.error(e); alert(e.message || 'Save failed')
     }
   }
+
+  // Find class → focus building (A1→Building A, etc.)
+  const findClass = (e) => {
+    e.preventDefault()
+    const v = (search||'').trim().toUpperCase()
+    if (!v) return
+    const letter = v[0]
+    const map = { A:'Building A', B:'Building B', C:'Building C' }
+    if (map[letter]) setSel(map[letter])
+  }
+
+  // Render helpers
+  const selectedArea = areas.find(a => a.name===sel)
+  const imgW = imgRef.current?.clientWidth || 0
+  const imgH = imgRef.current?.clientHeight || 0
+  const storedPx = (selectedArea?.points||[]).map(p => denorm(p, imgW, imgH))
+  const showPx = editing ? pointsPx : storedPx
 
   return (
     <div className="glass card" style={{padding:10}}>
-      <div className="flex" style={{justifyContent:'space-between',flexWrap:'wrap',gap:8,marginBottom:8}}>
+      <div className="flex" style={{justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8, marginBottom:8}}>
         <div className="flex" style={{gap:8, alignItems:'center'}}>
           <strong>Map</strong>
+          <select className="input xs" value={sel} onChange={e=>setSel(e.target.value)}>
+            {BUILDINGS.map(b => <option key={b}>{b}</option>)}
+          </select>
         </div>
+        <form onSubmit={findClass} className="flex" style={{gap:6, alignItems:'center'}}>
+          <input className="input xs" placeholder="Find class (e.g. A2)" value={search} onChange={e=>setSearch(e.target.value)} />
+          <button className="btn xs">Find</button>
+        </form>
         {isStaff && (
-          <div className="flex" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}>
-            <select className="input xs" value={currentBuilding} onChange={e=>setCurrentBuilding(e.target.value)}>
-              <option>Building A</option>
-              <option>Building B</option>
-              <option>Building C</option>
-              <option>Technologies</option>
-              <option>Administration</option>
-              <option>Sports</option>
-            </select>
-            <button className="btn xs" onClick={()=> setEdgeSnap(v=>!v)}>
-              {edgeSnap ? '✅ Edge-Snap On' : '✨ Edge-Snap'}
-            </button>
-            {edgeSnap && (
+          <div className="flex" style={{gap:6, alignItems:'center'}}>
+            <button className="btn xs" onClick={()=>setEditing(v=>!v)}>{editing?'✅ Done':'✏️ Edit outline'}</button>
+            {editing && (
               <>
-                <button className="btn xs" onClick={undo} type="button">Undo</button>
-                <button className="btn xs" onClick={clear} type="button">Clear</button>
-                <button className="btn xs btn-primary" onClick={save} type="button">Save</button>
+                <button className="btn xs" type="button" onClick={undo}>Undo</button>
+                <button className="btn xs" type="button" onClick={clear}>Clear</button>
+                <button className="btn xs btn-primary" type="button" onClick={save}>Save</button>
               </>
             )}
           </div>
@@ -155,118 +156,69 @@ export default function MapPanel({ user }) {
       </div>
 
       <div style={{position:'relative', width:'100%', overflow:'hidden', borderRadius:12}}>
-        {!imgOk && <div className="glass card small" style={{marginBottom:6, color:'#ef4444'}}>Image failed to load.</div>}
         <img
           ref={imgRef}
           src={MAP_URL}
           alt="School map"
           crossOrigin="anonymous"
           onLoad={onImgLoad}
-          onError={onImgErr}
           style={{ width:'100%', height:'auto', display:'block', userSelect:'none' }}
         />
         <svg
           ref={svgRef}
-          onPointerDown={onMapPointerDown}
-          style={{
-            position:'absolute', inset:0, width:'100%', height:'100%',
-            pointerEvents: edgeSnap ? 'auto' : 'none',
-            cursor: edgeSnap ? 'crosshair' : 'default',
-            touchAction:'none'
-          }}
+          onClick={onSvgClick}
+          style={{ position:'absolute', inset:0, width:'100%', height:'100%', touchAction:'none' }}
         >
-          {/* Stored polygons */}
-          {renderPolys.map(a => {
-            if (!a.pix.length) return null
-            const d = 'M ' + a.pix.map(([x,y])=>`${x},${y}`).join(' L ') + ' Z'
-            const active = selected === a.name
-            const [cx, cy] = centerPx(a)
+          {/* All stored areas (non-selected faint) */}
+          {areas.map(a => {
+            const pts = a.points?.length ? a.points.map(p=>denorm(p, imgW, imgH)) : []
+            if (!pts.length) return null
+            const d = 'M ' + pts.map(([x,y])=>`${x},${y}`).join(' L ') + ' Z'
+            const isSel = a.name===sel
             return (
-              <g key={a.id} className={`building ${active ? 'selected' : ''}`}
-                 onClick={(e)=>{ e.stopPropagation(); setSelected(a.name) }}
-                 style={{ pointerEvents:'auto', cursor:'pointer' }}>
+              <g key={a.id} className={`building ${isSel ? 'selected' : ''}`} onClick={()=>setSel(a.name)} style={{cursor:'pointer'}}>
                 <path d={d}
-                  fill={active ? 'var(--map-fill-active)' : 'var(--map-fill)'}
-                  stroke={active ? 'var(--map-stroke-active)' : 'var(--map-stroke)'}
-                  strokeWidth={active ? 3 : 2}
-                />
-                <foreignObject x={cx-60} y={cy-16} width="120" height="32" style={{ pointerEvents:'none' }}>
-                  <div className="badge" style={{ justifyContent:'center', fontWeight:700, textAlign:'center' }}>{a.name}</div>
-                </foreignObject>
+                      fill={isSel ? 'rgba(14,165,233,.25)' : 'rgba(255,255,255,.2)'}
+                      stroke={isSel ? 'rgba(14,165,233,.9)' : 'rgba(0,0,0,.4)'}
+                      strokeWidth={isSel ? 3 : 1.5}/>
               </g>
             )
           })}
 
-          {/* Edge-snap preview polyline */}
-          {previewPts.length>0 && (
+          {/* Editing overlay for selected */}
+          {editing && showPx.length>0 && (
             <>
               <polyline
-                points={previewPts.map(([x,y])=>`${x},${y}`).join(' ')}
-                fill="rgba(14,165,233,0.15)"
+                points={showPx.map(([x,y])=>`${x},${y}`).join(' ')}
+                fill="rgba(14,165,233,.15)"
                 stroke="rgba(14,165,233,1)"
                 strokeWidth="2"
               />
-              {previewPts.map(([x,y],i)=>(
-                <circle key={i} cx={x} cy={y} r="4" fill="rgba(14,165,233,1)" />
+              {showPx.map(([x,y],i)=>(
+                <g key={i}>
+                  <circle cx={x} cy={y} r="5" fill="#0ea5e9" style={{cursor:'grab'}} onPointerDown={onHandleDown(i)}/>
+                </g>
               ))}
             </>
           )}
         </svg>
       </div>
 
-      {isStaff && (
-        <div className="small" style={{marginTop:8,opacity:.8}}>
-          Edge-Snap: click around the building corners (3–8 clicks). Points snap to the nearest edge. Use <b>Undo</b>/<b>Clear</b>, then <b>Save</b>.
-        </div>
-      )}
+      <div className="small" style={{marginTop:8, opacity:.85}}>
+        Tip: In edit mode, **click the outline** to add a new vertex; **drag blue nodes** to adjust; Save when done.
+      </div>
     </div>
   )
 }
 
-/* ---------- image gradient + snap helpers (no libs) ---------- */
-function sobelMagnitude(imgData, w, h) {
-  // grayscale already (we’ll compute from RGB)
-  const { data } = imgData
-  const gray = new Float32Array(w*h)
-  for (let i=0, p=0; i<data.length; i+=4, p++){
-    const r=data[i], g=data[i+1], b=data[i+2]
-    gray[p] = 0.299*r + 0.587*g + 0.114*b
-  }
-  const G = new Float32Array(w*h)
-  let max = 0
-  // Sobel kernels
-  const gx = [-1,0,1, -2,0,2, -1,0,1]
-  const gy = [-1,-2,-1, 0,0,0, 1,2,1]
-  for (let y=1; y<h-1; y++){
-    for (let x=1; x<w-1; x++){
-      let sx=0, sy=0
-      let k=0
-      for (let j=-1;j<=1;j++){
-        for (let i=-1;i<=1;i++){
-          const v = gray[(y+j)*w + (x+i)]
-          sx += v * gx[k]
-          sy += v * gy[k]
-          k++
-        }
-      }
-      const mag = Math.hypot(sx, sy)
-      G[y*w + x] = mag
-      if (mag>max) max=mag
-    }
-  }
-  return { w, h, data: G, max }
-}
-
-function snapToEdge(grad, x, y, radius=20) {
-  const { w, h, data } = grad
-  let best = null, bestVal = -1
-  const x0 = Math.max(1, x - radius), x1 = Math.min(w-2, x + radius)
-  const y0 = Math.max(1, y - radius), y1 = Math.min(h-2, y + radius)
-  for (let j=y0; j<=y1; j++){
-    for (let i=x0; i<=x1; i++){
-      const v = data[j*w + i]
-      if (v > bestVal) { bestVal = v; best = [i,j] }
-    }
-  }
-  return best
+/* distance from point to segment helper */
+function pointToSegment(px, py, [x1,y1], [x2,y2]){
+  const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1
+  const dot = A*C + B*D
+  const len_sq = C*C + D*D
+  let t = len_sq ? dot / len_sq : -1
+  t = Math.max(0, Math.min(1, t))
+  const x = x1 + t*C, y = y1 + t*D
+  const dx = px - x, dy = py - y
+  return Math.hypot(dx, dy)
 }
